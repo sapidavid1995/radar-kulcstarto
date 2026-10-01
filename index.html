@@ -271,6 +271,7 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/STLExporter.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/polyclip-ts@0.16.8/dist/polyclip-ts.umd.min.js"></script>
 <script>
 
 (function(){
@@ -282,7 +283,7 @@ const PAL = { base:'#8f959b', water:'#6f9ac9', park:'#5a8a35', building:'#f5f5f5
 const BASE_T = 2.0;                                   // alaplap vastagsága
 const TOPS   = { water:2.4, park:2.4, road:2.8, building:3.0 };  // rétegek felső síkja
 const RIM_TOP = 3.4, RIM_W = 1.0;                     // keret magassága, szélessége
-const TAB_R = 4.4, TAB_HOLE = 2.0, TAB_OFFSET = 3.4;  // kulcslyuk-fül méretei
+const TAB_R = 4.4, TAB_HOLE = 2.0, TAB_OFFSET = 3.7;  // kulcslyuk-fül méretei
 
 /* ---------- Térkép és kör alakú kijelölő ---------- */
 const map = L.map('map').setView([47.4979, 19.0402], 16);
@@ -494,15 +495,55 @@ function relLayer(t){
   return null;
 }
 
+/* ---------- Réteg-összevonás (boolean műveletek, hogy ne legyenek átfedő felületek) ---------- */
+function unionAll(list){
+  if(!list.length) return [];
+  const CH=200, parts=[];
+  for(let i=0;i<list.length;i+=CH){
+    const chunk=list.slice(i,i+CH);
+    parts.push(chunk.length===1 ? [chunk[0]] : polyclip.union.apply(null,chunk));
+  }
+  return parts.length===1 ? parts[0] : polyclip.union.apply(null,parts);
+}
+function diffAll(subject, clips){
+  if(!subject.length) return [];
+  const cl=clips.filter(c=>c.length);
+  return cl.length ? polyclip.difference.apply(null,[subject].concat(cl)) : subject;
+}
+function stripRing(r){
+  const a=r[0], b=r[r.length-1];
+  return (a[0]===b[0]&&a[1]===b[1]) ? r.slice(0,-1) : r;
+}
+function polysToGeoms(polys,z0,z1){
+  const out=[];
+  for(const poly of polys){
+    if(!poly||!poly[0]) continue;
+    const o=stripRing(poly[0]);
+    if(o.length<3||Math.abs(area(o))<0.02) continue;
+    const sh=new THREE.Shape(o.map(V2));
+    for(let i=1;i<poly.length;i++){
+      const h=stripRing(poly[i]);
+      if(h.length>=3&&Math.abs(area(h))>0.01) sh.holes.push(new THREE.Path(h.map(V2)));
+    }
+    try{
+      const g=new THREE.ExtrudeGeometry(sh,{ depth:z1-z0, bevelEnabled:false });
+      g.translate(0,0,z0); out.push(g);
+    }catch(e){}
+  }
+  return out;
+}
+
 function buildModel(osm, P){
   const Rmm = P.D/2, s = Rmm/P.R;
   const kx = 111320*Math.cos(P.lat0*Math.PI/180), ky = 110540;
   const proj = g => g.map(p => [(p.lon-P.lon0)*kx*s, (p.lat-P.lat0)*ky*s]);
-  const clipR = Rmm - RIM_W + 0.2;
-  const CP = circlePoly(clipR, 96);
+  const CIRC_N = 128;
+  const clipR = Rmm - RIM_W;                  // a térkép pontosan a keret belső széléig ér
+  const CP = circlePoly(clipR, CIRC_N);       // ugyanaz a sokszög, mint a keret belső pereme
   const f = Math.max(0.85, Math.min(1.4, P.D/40));
-  const LAY = { base:[], water:[], park:[], building:[], road:[], rim:[] };
+  const RAW = { water:[], park:[], building:[], road:[] };
   const MIN_AREA = { building:0.8, park:3, water:3 };
+  const hasClip = (typeof polyclip!=='undefined');
 
   function extrude(shape, z0, z1){
     const g = new THREE.ExtrudeGeometry(shape, { depth: z1-z0, bevelEnabled:false });
@@ -510,13 +551,13 @@ function buildModel(osm, P){
   }
   function addPoly(layer, outer, holes){
     const o = clean(clip(outer, CP));
-    if(o.length<3 || Math.abs(area(o))<0.04) return;
-    const sh = new THREE.Shape(o.map(V2));
+    if(o.length<3 || Math.abs(area(o))<0.02) return;
+    const poly = [o];
     for(const h of (holes||[])){
       const c = clean(clip(h, CP));
-      if(c.length>=3 && Math.abs(area(c))>0.02) sh.holes.push(new THREE.Path(c.map(V2)));
+      if(c.length>=3 && Math.abs(area(c))>0.01) poly.push(c);
     }
-    try{ LAY[layer].push(extrude(sh, BASE_T-0.02, TOPS[layer])); }catch(e){}
+    RAW[layer].push(poly);
   }
   function addRoad(layer, pts, w){
     const h = w/2, lim = clipR + h;
@@ -527,9 +568,17 @@ function buildModel(osm, P){
       const nx=-dy/len*h, ny=dx/len*h;
       addPoly(layer, [[p[0]+nx,p[1]+ny],[q[0]+nx,q[1]+ny],[q[0]-nx,q[1]-ny],[p[0]-nx,p[1]-ny]]);
     }
-    for(const p of pts){
-      if(Math.hypot(p[0],p[1])>lim) continue;
-      addPoly(layer, circlePoly(h, 8, p[0], p[1]));
+    // lekerekítés csak a végeken és ott, ahol az út elkanyarodik
+    for(let i=0;i<pts.length;i++){
+      const p=pts[i]; if(Math.hypot(p[0],p[1])>lim) continue;
+      let need = (i===0 || i===pts.length-1);
+      if(!need){
+        const a=pts[i-1], b=pts[i+1];
+        const a1=Math.atan2(p[1]-a[1],p[0]-a[0]), a2=Math.atan2(b[1]-p[1],b[0]-p[0]);
+        let d=Math.abs(a2-a1); if(d>Math.PI) d=2*Math.PI-d;
+        need = d>0.2;
+      }
+      if(need) addPoly(layer, circlePoly(h, 8, p[0], p[1]));
     }
   }
   const closed = g => g.length>3 && g[0].lat===g[g.length-1].lat && g[0].lon===g[g.length-1].lon;
@@ -569,16 +618,42 @@ function buildModel(osm, P){
     }
   }
 
-  // alaplap, keret, kulcslyuk-fül
-  LAY.base.push(extrude(new THREE.Shape(circlePoly(Rmm,128).map(V2)), 0, BASE_T));
-  const rim = new THREE.Shape(circlePoly(Rmm,128).map(V2));
-  rim.holes.push(new THREE.Path(circlePoly(Rmm-RIM_W,128).map(V2)));
-  LAY.rim.push(extrude(rim, 0, RIM_TOP));
-  if(P.tab){
-    const tab = new THREE.Shape(circlePoly(TAB_R,48,0,Rmm+TAB_OFFSET).map(V2));
-    tab.holes.push(new THREE.Path(circlePoly(TAB_HOLE,32,0,Rmm+TAB_OFFSET).map(V2)));
-    LAY.rim.push(extrude(tab, 0, RIM_TOP));
+  // --- rétegek egyesítése, átfedések kivágása (fontossági sorrend: épület > út > víz > park) ---
+  let FIN = { building:RAW.building, road:RAW.road, water:RAW.water, park:RAW.park }, merged = false;
+  const total = RAW.building.length+RAW.road.length+RAW.water.length+RAW.park.length;
+  if(hasClip && total<60000){
+    const safe = (fn, fb) => { try{ return fn(); }catch(e){ console.warn('boolean hiba', e); merged=false; return fb; } };
+    merged = true;
+    const Bd = safe(()=>unionAll(RAW.building), RAW.building);
+    const Rd0 = safe(()=>unionAll(RAW.road), RAW.road);
+    const Wt0 = safe(()=>unionAll(RAW.water), RAW.water);
+    const Pk0 = safe(()=>unionAll(RAW.park), RAW.park);
+    const Rd = safe(()=>diffAll(Rd0,[Bd]), Rd0);
+    const Wt = safe(()=>diffAll(Wt0,[Bd,Rd]), Wt0);
+    const Pk = safe(()=>diffAll(Pk0,[Bd,Rd,Wt]), Pk0);
+    FIN = { building:Bd, road:Rd, water:Wt, park:Pk };
   }
+
+  const LAY = { base:[], water:[], park:[], building:[], road:[], rim:[] };
+  for(const name of ['water','park','building','road']) LAY[name] = polysToGeoms(FIN[name], BASE_T-0.01, TOPS[name]);
+
+  // alaplap
+  LAY.base.push(extrude(new THREE.Shape(circlePoly(Rmm,CIRC_N).map(V2)), 0, BASE_T));
+
+  // keret + kulcslyuk-fül: egyetlen összefüggő felület, ugyanaz a kerület, mint az alaplapé
+  const ringO = circlePoly(Rmm, CIRC_N), ringI = circlePoly(Rmm-RIM_W, CIRC_N);
+  let rimUp = [[ringO, ringI]], rimLow = [], tabFallback = false;
+  const tabO = circlePoly(TAB_R, 48, 0, Rmm+TAB_OFFSET), tabH = circlePoly(TAB_HOLE, 32, 0, Rmm+TAB_OFFSET);
+  if(P.tab){
+    if(hasClip){
+      try{
+        rimUp  = polyclip.difference(polyclip.union([ringO, ringI], [tabO]), [tabH]);
+        rimLow = polyclip.difference([tabO, tabH], [ringO]);   // a fül az alaplapon kívüli része, alulról
+      }catch(e){ rimUp=[[ringO, ringI]]; rimLow=[]; tabFallback=true; }
+    } else tabFallback = true;
+  }
+  LAY.rim = polysToGeoms(rimUp, BASE_T-0.01, RIM_TOP).concat(polysToGeoms(rimLow, 0, BASE_T));
+  if(tabFallback) LAY.rim = LAY.rim.concat(polysToGeoms([[tabO, tabH]], 0, RIM_TOP));
 
   // rétegenként egy összefűzött háló
   const group = new THREE.Group(); let tris = 0;
@@ -595,7 +670,7 @@ function buildModel(osm, P){
     const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color:PAL[name], roughness:0.85, metalness:0 }));
     mesh.name = name; group.add(mesh);
   }
-  return { group, R:Rmm, tris:Math.round(tris), tab:P.tab };
+  return { group:group, R:Rmm, tris:Math.round(tris), tab:P.tab, merged:merged };
 }
 
 /* ---------- Matricák: ikonok és szöveg ---------- */
@@ -951,7 +1026,7 @@ function itemCache(it,size){
     if(!m.so) m.so=traceShapes(m.out,m.w,m.h);
     if(!m.sf) m.sf=traceShapes(m.fill,m.w,m.h);
     it.cache={ size:size,
-      so:shapesToGeoms(m.so,m.w,m.h,k,0,0,BASE_T-0.02,ICON_OUT_TOP),
+      so:shapesToGeoms(m.so,m.w,m.h,k,0,0,BASE_T-0.01,ICON_OUT_TOP),
       sf:shapesToGeoms(m.sf,m.w,m.h,k,0,0,ICON_OUT_TOP-0.02,ICON_FILL_TOP) };
   }
   return it.cache;
@@ -1037,7 +1112,7 @@ let topView=false;
 function init3D(){
   if(renderer) return;
   const el=$('view3d');
-  renderer=new THREE.WebGLRenderer({ antialias:true, alpha:true });
+  renderer=new THREE.WebGLRenderer({ antialias:true, alpha:true, logarithmicDepthBuffer:true });
   renderer.setClearColor(0x000000,0);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
   el.insertBefore(renderer.domElement, el.firstChild);
@@ -1065,6 +1140,8 @@ function resize3D(){
 function setCamera(top){
   if(!current||!camera) return;
   const R=current.R;
+  camera.near=R*0.25; camera.far=R*14; camera.updateProjectionMatrix();
+  controls.minDistance=R*0.9; controls.maxDistance=R*7;
   controls.target.set(0, current.tab? R*0.12 : 0, BASE_T);
   if(top) camera.position.set(0, -R*0.02, R*3.6);
   else camera.position.set(0, -R*1.7, R*1.9);
@@ -1150,7 +1227,7 @@ async function ensureModel(){
 function updateSummary(){
   if(!current) return;
   const n=items.length;
-  $('sum').textContent='Átmérő: '+Math.round(current.R*2)+' mm · '+n+' ikon/szöveg · '+current.tris.toLocaleString('hu-HU')+' háromszög (térkép).';
+  $('sum').textContent='Átmérő: '+Math.round(current.R*2)+' mm · '+n+' ikon/szöveg · '+current.tris.toLocaleString('hu-HU')+' háromszög (térkép).' + (current.merged ? '' : ' (Az átfedések egyesítése nem sikerült, a nyomtatás előtt a szeletelő egyesíti őket.)');
 }
 function setStep(n){
   step=n;
