@@ -647,7 +647,7 @@ function buildModel(osm, P){
     FIN = { building:Bd, road:Rd, water:Wt, park:Pk };
   }
 
-  const LAY = { base:[], water:[], park:[], building:[], road:[], rim:[] };
+  const LAY = { base:[], water:[], park:[], building:[], road:[], rim:[], rim2:[], tab:[] };
   for(const name of ['water','park','building','road']) LAY[name] = polysToGeoms(FIN[name], BASE_T-0.01, TOPS[name]);
 
   // alaplap
@@ -655,22 +655,36 @@ function buildModel(osm, P){
 
   // keret + kulcslyuk-fül: egyetlen összefüggő felület, ugyanaz a kerület, mint az alaplapé
   const ringO = circlePoly(Rmm, CIRC_N), ringI = circlePoly(Rmm-RIM_W, CIRC_N);
-  let rimUp = [[ringO, ringI]], rimLow = [], tabFallback = false;
   const tabO = circlePoly(TAB_R, 48, 0, Rmm+TAB_OFFSET), tabH = circlePoly(TAB_HOLE, 32, 0, Rmm+TAB_OFFSET);
-  if(P.tab){
-    if(hasClip){
-      try{
-        rimUp  = polyclip.difference(polyclip.union([ringO, ringI], [tabO]), [tabH]);
-        rimLow = polyclip.difference([tabO, tabH], [ringO]);   // a fül az alaplapon kívüli része, alulról
-      }catch(e){ rimUp=[[ringO, ringI]]; rimLow=[]; tabFallback=true; }
-    } else tabFallback = true;
+  let splitDone = false;
+  if(P.rimSplit && hasClip){
+    // GTA IV: a keret bal fele zöld, jobb fele kék; a fül külön, sötét test
+    try{
+      const BIG=1000, ring=[[ringO, ringI]];
+      const leftHalf=[[-BIG,-BIG],[0,-BIG],[0,BIG],[-BIG,BIG]], rightHalf=[[0,-BIG],[BIG,-BIG],[BIG,BIG],[0,BIG]];
+      LAY.rim  = polysToGeoms(polyclip.intersection(ring,[leftHalf]),  BASE_T-0.01, RIM_TOP);
+      LAY.rim2 = polysToGeoms(polyclip.intersection(ring,[rightHalf]), BASE_T-0.01, RIM_TOP);
+      if(P.tab) LAY.tab = polysToGeoms(polyclip.difference([tabO, tabH], [ringO]), 0, RIM_TOP);
+      splitDone = true;
+    }catch(e){ splitDone=false; LAY.rim=[]; LAY.rim2=[]; LAY.tab=[]; }
   }
-  LAY.rim = polysToGeoms(rimUp, BASE_T-0.01, RIM_TOP).concat(polysToGeoms(rimLow, 0, BASE_T));
-  if(tabFallback) LAY.rim = LAY.rim.concat(polysToGeoms([[tabO, tabH]], 0, RIM_TOP));
+  if(!splitDone){
+    let rimUp = [[ringO, ringI]], rimLow = [], tabFallback = false;
+    if(P.tab){
+      if(hasClip){
+        try{
+          rimUp  = polyclip.difference(polyclip.union([ringO, ringI], [tabO]), [tabH]);
+          rimLow = polyclip.difference([tabO, tabH], [ringO]);   // a fül az alaplapon kívüli része, alulról
+        }catch(e){ rimUp=[[ringO, ringI]]; rimLow=[]; tabFallback=true; }
+      } else tabFallback = true;
+    }
+    LAY.rim = polysToGeoms(rimUp, BASE_T-0.01, RIM_TOP).concat(polysToGeoms(rimLow, 0, BASE_T));
+    if(tabFallback) LAY.rim = LAY.rim.concat(polysToGeoms([[tabO, tabH]], 0, RIM_TOP));
+  }
 
   // rétegenként egy összefűzött háló
   const group = new THREE.Group(); let tris = 0;
-  for(const name of ['base','water','park','building','road','rim']){
+  for(const name of ['base','water','park','building','road','rim','rim2','tab']){
     const gs = LAY[name]; if(!gs.length) continue;
     let geo = null;
     try{ geo = THREE.BufferGeometryUtils.mergeBufferGeometries(gs); }catch(e){}
@@ -696,7 +710,9 @@ const STYLES = {
        pal:{ base:'#8f959b', water:'#6f9ac9', park:'#5a8a35', building:'#f5f5f5', road:'#262626', rim:'#111111' } },
   vc:{ name:'GTA: Vice City', sub:'Rózsaszín keret, kék címkés ikonok', frame:'badge', outline:'#16233a', badge:'#59b4ee', glyph:'#ffffff',
        pal:{ base:'#b2b7bd', water:'#9ccbf2', park:'#2f9e5c', building:'#f6f6f6', road:'#141414', rim:'#d96fe3' } },
-  gta4:{ name:'GTA IV', sub:'Hamarosan érkezik', soon:true }
+  gta4:{ name:'GTA IV', sub:'Sötét, visszafogott radar, zöld–kék keret', frame:'circle', outline:'#111111', badge:'#f4f4f4', glyph:'#111111',
+         textColor:'#7fc46a', rimSplit:true,
+         pal:{ base:'#59656b', water:'#7ea3bd', park:'#6c8f5e', building:'#9aa4a8', road:'#d9dddf', rim:'#5f9a50', rim2:'#3f93a6', tab:'#2b2f33' } }
 };
 let styleKey='sa';
 function curStyle(){ return STYLES[styleKey]; }
@@ -870,6 +886,33 @@ ICONS.push(
     c.lineWidth=5; c.beginPath(); c.moveTo(30,56); c.quadraticCurveTo(36,30,58,12); c.moveTo(70,56); c.quadraticCurveTo(64,30,58,12); c.stroke();
     poly(c,[[58,12],[82,6],[72,26]]); cut(c,()=>{ disc(c,24,66,4); disc(c,64,66,4); }); } }
 );
+ICONS.push(
+  { key:'fork', name:'Étterem', color:'#f4f4f4', only:'gta4', draw(c){
+    c.fillRect(10,6,6,32); c.fillRect(21,6,6,32); c.fillRect(32,6,6,32); rr(c,10,32,28,16,7); c.fillRect(20,46,8,48);
+    poly(c,[[62,6],[80,22],[78,58],[64,58]]); c.fillRect(62,56,12,38); } },
+  { key:'wrench', name:'Szerelő', color:'#f4f4f4', only:'gta4', draw(c){
+    c.save(); c.translate(50,50); c.rotate(-0.785); c.translate(-50,-50);
+    rr(c,43,30,14,66,5); disc(c,50,26,21); cut(c,()=>c.fillRect(42,2,16,26)); c.restore(); } },
+  { key:'trophy', name:'Kupa', color:'#f7c531', only:'gta4', draw(c){
+    poly(c,[[24,8],[76,8],[70,44],[58,56],[42,56],[30,44]]);
+    c.lineWidth=7; c.beginPath(); c.arc(22,26,13,Math.PI/2,Math.PI*1.5); c.stroke();
+    c.beginPath(); c.arc(78,26,13,-Math.PI/2,Math.PI/2); c.stroke();
+    c.fillRect(45,56,10,20); rr(c,28,76,44,14,4); } },
+  { key:'truck', name:'Teherautó', color:'#f4f4f4', only:'gta4', draw(c){
+    rr(c,4,24,56,50,3); poly(c,[[60,38],[82,38],[96,56],[96,74],[60,74]]);
+    cut(c,()=>{ disc(c,24,78,15); disc(c,78,78,15); poly(c,[[66,44],[80,44],[88,56],[66,56]]); });
+    disc(c,24,78,11); disc(c,78,78,11); cut(c,()=>{ disc(c,24,78,4); disc(c,78,78,4); }); } },
+  { key:'medic', name:'Mentő', color:'#e0343a', only:'gta4', draw(c){
+    for(let i=0;i<3;i++){ c.save(); c.translate(50,50); c.rotate(i*Math.PI/3); c.fillRect(-8,-46,16,92); c.restore(); } } },
+  { key:'checker', name:'Rajtzászló', color:'#f4f4f4', only:'gta4', draw(c){
+    c.fillRect(10,4,8,92); c.fillRect(18,10,66,48);
+    cut(c,()=>{ for(let r=0;r<3;r++) for(let k=0;k<4;k++){ if((r+k)%2===0) c.fillRect(18+k*16.5,10+r*16,16.5,16); } }); } },
+  { key:'question', name:'Kérdőjel', color:'#f4f4f4', only:'gta4', draw(c){
+    c.font='bold 120px "Rubik Mono One", Impact, sans-serif'; c.textAlign='center'; c.textBaseline='middle'; c.fillText('?',50,54); } },
+  { key:'scissors', name:'Borbély', color:'#f4f4f4', only:'gta4', draw(c){
+    poly(c,[[46,4],[54,4],[78,68],[70,72]]); poly(c,[[54,4],[46,4],[22,68],[30,72]]);
+    c.lineWidth=7; c.beginPath(); c.arc(24,84,11,0,Math.PI*2); c.stroke(); c.beginPath(); c.arc(76,84,11,0,Math.PI*2); c.stroke(); } }
+);
 function iconsForStyle(){ return ICONS.filter(i=>!i.only || i.only===styleKey); }
 
 /* --- maszkok: kitöltés + fekete körvonal (kitágítás) --- */
@@ -895,16 +938,22 @@ function roundRectMask(x,y,w,h,r,cw,ch){
   const c=cv.getContext('2d',{willReadFrequently:true}); c.fillStyle='#000'; rr(c,x,y,w,h,r);
   return maskFromCanvas(cv);
 }
+function circleMask(cx,cy,r,cw,ch){
+  const cv=document.createElement('canvas'); cv.width=cw; cv.height=ch;
+  const c=cv.getContext('2d',{willReadFrequently:true}); c.fillStyle='#000'; c.beginPath(); c.arc(cx,cy,r,0,Math.PI*2); c.fill();
+  return maskFromCanvas(cv);
+}
 function iconMasks(draw, frame){
   const cv=document.createElement('canvas'); cv.width=cv.height=GS;
   const c=cv.getContext('2d',{willReadFrequently:true});
   c.fillStyle='#000'; c.strokeStyle='#000';
-  if(frame==='badge'){
-    // lekerekített négyzet alakú címke, benne kisebb jellel (Vice City-s radar-ikon hangulat)
-    const inset=PAD+13, size=GS-2*inset;
+  if(frame==='badge' || frame==='circle'){
+    // címke (Vice City: lekerekített négyzet, GTA IV: kör) a közepén kisebb jellel
+    const inset=PAD+(frame==='circle'?15:13), size=GS-2*inset;
     c.save(); c.translate(inset,inset); c.scale(size/100,size/100); draw(c); c.restore();
     const glyph=maskFromCanvas(cv);
-    const badge=roundRectMask(PAD,PAD,GS-2*PAD,GS-2*PAD,18,GS,GS);
+    const badge=(frame==='circle') ? circleMask(GS/2,GS/2,(GS-2*PAD)/2,GS,GS)
+                                   : roundRectMask(PAD,PAD,GS-2*PAD,GS-2*PAD,18,GS,GS);
     return { w:GS, h:GS, fill:badge, out:dilate(badge,GS,GS,OUT_R), glyph:glyph };
   }
   c.save(); c.translate(PAD,PAD); const s=(GS-2*PAD)/100; c.scale(s,s); draw(c); c.restore();
@@ -1130,8 +1179,8 @@ function applyIcons(){
 }
 
 /* --- felület --- */
-function defIconColor(ic){ return frameMode()==='badge' ? curStyle().badge : ic.color; }
-function defTextColor(){ return frameMode()==='badge' ? curStyle().badge : '#f4f4f4'; }
+function defIconColor(ic){ return frameMode()!=='plain' ? curStyle().badge : ic.color; }
+function defTextColor(){ return curStyle().textColor || (frameMode()==='badge' ? curStyle().badge : '#f4f4f4'); }
 function buildGrid(){
   const g=$('iconGrid'); g.innerHTML='';
   iconsForStyle().forEach(ic=>{
@@ -1188,8 +1237,9 @@ $('isz').addEventListener('change', ()=>{
 });
 buildGrid(); renderChips();
 fontReady().then(()=>{ // a betűtípus megérkezése után a szöveges ikonok újrarajzolása
-  const d=iconDef('dollar'); d.mc=null;
-  items.forEach(it=>{ if(it.kind==='icon'&&it.key==='dollar'){ it.masks=null; disposeCache(it); } });
+  const fontKeys=['dollar','question'];   // a betűtípussal rajzolt ikonok
+  fontKeys.forEach(k=>{ const d=iconDef(k); if(d) d.mc=null; });
+  items.forEach(it=>{ if(it.kind==='icon'&&fontKeys.indexOf(it.key)>=0){ it.masks=null; disposeCache(it); } });
   buildGrid(); renderChips(); applyIcons();
 });
 
@@ -1263,14 +1313,14 @@ function setModel(res, keepCamera){
 
 /* ---------- Színek ---------- */
 const DEFAULT_PAL=Object.assign({},PAL);
-const PAL_LABELS={ base:'Alap (beton)', road:'Utak', building:'Épületek', park:'Parkok', water:'Víz', rim:'Keret' };
+const PAL_LABELS={ base:'Alap (beton)', road:'Utak', building:'Épületek', park:'Parkok', water:'Víz', rim:'Keret', rim2:'Keret (jobb fele)', tab:'Kulcslyuk-fül' };
 function buildPalette(){
   const box=$('palette'); box.innerHTML='';
-  Object.keys(PAL_LABELS).forEach(k=>{
+  Object.keys(PAL_LABELS).filter(k=>PAL[k]).forEach(k=>{
     const w=document.createElement('label'); w.className='sw2';
     const inp=document.createElement('input'); inp.type='color'; inp.value=PAL[k];
     inp.addEventListener('input',()=>{ PAL[k]=inp.value; applyPalette(); });
-    const sp=document.createElement('span'); sp.textContent=PAL_LABELS[k];
+    const sp=document.createElement('span'); sp.textContent=(k==='rim' && PAL.rim2) ? 'Keret (bal fele)' : PAL_LABELS[k];
     w.appendChild(inp); w.appendChild(sp); box.appendChild(w);
   });
 }
@@ -1289,7 +1339,7 @@ function renderStyleCards(){
     if(st.soon){ const tag=document.createElement('span'); tag.className='tag'; tag.textContent='Hamarosan'; b.appendChild(tag); }
     else{
       const dots=document.createElement('span'); dots.className='dots';
-      ['base','road','building','park','water','rim'].forEach(n=>{ const i=document.createElement('i'); i.style.background=st.pal[n]; dots.appendChild(i); });
+      ['base','road','building','park','water','rim','rim2'].filter(n=>st.pal[n]).forEach(n=>{ const i=document.createElement('i'); i.style.background=st.pal[n]; dots.appendChild(i); });
       b.appendChild(dots);
     }
     b.addEventListener('click',()=>setStyle(k));
@@ -1298,7 +1348,9 @@ function renderStyleCards(){
 }
 function setStyle(key){
   const st=STYLES[key]; if(!st||st.soon||key===styleKey) return;
+  const wasSplit=!!curStyle().rimSplit;
   styleKey=key;
+  ['rim2','tab'].forEach(k=>{ delete PAL[k]; });
   Object.assign(PAL,st.pal);
   let removed=0;
   for(let i=items.length-1;i>=0;i--){
@@ -1313,7 +1365,11 @@ function setStyle(key){
   });
   if(selected && items.indexOf(selected)<0) selected=null;
   buildGrid(); renderChips(); buildPalette(); renderStyleCards();
-  if(current){ applyPalette(); items.forEach(it=>clampItem(it,current.R,stickerSize())); applyIcons(); }
+  if(current){
+    if(wasSplit!==!!st.rimSplit && osmCache && genP){ buildFromCache(builtD,true); }   // a keret felépítése megváltozik
+    else { applyPalette(); }
+    items.forEach(it=>clampItem(it,current.R,stickerSize())); applyIcons();
+  }
   status(removed ? 'Néhány ikon csak a másik stílusban érhető el, ezeket eltávolítottam.' : 'Stílus: '+st.name);
 }
 buildPalette();
@@ -1332,7 +1388,7 @@ const NEXT_LABEL={ 1:'Modell generálása →', 2:'Tovább: ikonok →', 3:'Tov�
 
 function buildFromCache(D, keepCamera){
   const res=buildModel(osmCache,{ lat0:genP.lat0, lon0:genP.lon0, R:genP.R, D:D,
-    detail:+$('detail').value, tab:$('tab').checked, buildings:$('bld').checked });
+    detail:+$('detail').value, tab:$('tab').checked, buildings:$('bld').checked, rimSplit:!!curStyle().rimSplit });
   setModel(res,keepCamera);
 }
 async function ensureModel(){
