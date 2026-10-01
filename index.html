@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Radar kulcstartó generátor</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik+Mono+One&display=swap">
+<style>
+  :root{
+    --ink:#1b1d1f; --panel:#23262a; --line:#3a3f45; --text:#ecebe3; --dim:#a3a79f;
+    --water:#7ea6cf; --park:#86b26f; --road:#ecebe3; --accent:#f0b429;
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  *,*::before,*::after{box-sizing:inherit}
+  html,body{height:100%;margin:0}
+  body{
+    background:var(--ink);color:var(--text);
+    font:15px/1.4 "Trebuchet MS","Segoe UI",system-ui,sans-serif;
+    display:flex;flex-direction:column;height:100dvh;
+  }
+  header{
+    display:flex;align-items:center;gap:12px;padding:10px 14px;
+    border-bottom:1px solid var(--line);background:var(--panel);
+  }
+  header h1{
+    margin:0;font:700 19px/1 "Arial Black","Impact",sans-serif;letter-spacing:.5px;
+    text-shadow:2px 2px 0 #000;
+  }
+  .tabs{margin-left:auto;display:flex;gap:6px}
+  .tab{
+    border:1px solid var(--line);background:transparent;color:var(--dim);
+    padding:7px 12px;border-radius:6px;font:inherit;cursor:pointer;
+  }
+  .tab.on{background:var(--accent);color:#1b1d1f;border-color:var(--accent);font-weight:700}
+  .tab:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  #stage{position:relative;flex:1;min-height:0;overflow:hidden;isolation:isolate}
+  .view{position:absolute;inset:0;display:none}
+  .view.on{display:block}
+  #map{position:absolute;inset:0;background:#cfd3c8}
+  #lens{
+    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    border-radius:50%;pointer-events:none;z-index:500;
+    box-shadow:0 0 0 100vmax rgba(20,22,24,.62), inset 0 0 0 3px rgba(240,180,41,.95);
+  }
+  #lens::after{ /* kulcslyuk-fül jelölése */
+    content:"";position:absolute;left:50%;top:-9%;width:12%;height:12%;
+    transform:translateX(-50%);border-radius:50%;
+    box-shadow:inset 0 0 0 3px rgba(240,180,41,.95);background:rgba(20,22,24,.62);
+  }
+  #view3d canvas{display:block;width:100%;height:100%;touch-action:none}
+  #hint{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    text-align:center;color:var(--dim);padding:24px;pointer-events:none;
+  }
+
+  #panel{
+    background:var(--panel);border-top:1px solid var(--line);
+    padding:10px 14px 12px;display:grid;gap:10px;
+    max-height:46dvh;overflow:auto;
+  }
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .row > label{color:var(--dim)}
+  input[type=text]{
+    flex:1;min-width:140px;background:#15171a;border:1px solid var(--line);color:var(--text);
+    padding:9px 10px;border-radius:6px;font:inherit;
+  }
+  select{background:#15171a;border:1px solid var(--line);color:var(--text);padding:8px;border-radius:6px;font:inherit}
+  input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
+  button.act{
+    background:#15171a;color:var(--text);border:1px solid var(--line);
+    padding:9px 13px;border-radius:6px;font:inherit;cursor:pointer;
+  }
+  button.main{background:var(--accent);color:#1b1d1f;border-color:var(--accent);font-weight:700}
+  button:disabled{opacity:.45;cursor:default}
+  .chk{display:flex;gap:6px;align-items:center}
+  #info{color:var(--dim);font-size:13px}
+  #status{min-height:1.3em;font-size:13px;color:var(--accent)}
+  .legend{display:flex;gap:10px;align-items:center;font-size:12px;color:var(--dim);flex-wrap:wrap}
+  .sw{width:11px;height:11px;border-radius:2px;display:inline-block;margin-right:4px;vertical-align:-1px}
+  details{border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+  details > summary{cursor:pointer;color:var(--text);font-weight:700}
+  details[open] > summary{margin-bottom:8px}
+  details > .row{margin-top:8px}
+  #cnt{color:var(--accent);font-weight:400;margin-left:6px}
+  .igrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(54px,1fr));gap:6px}
+  .ib{height:54px;display:flex;align-items:center;justify-content:center;background:#15171a;
+    border:1px solid var(--line);border-radius:8px;cursor:pointer;padding:4px}
+  .ib:active{background:#2c3036}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;min-height:4px}
+  .chip{display:flex;align-items:center;gap:6px;background:#15171a;border:1px solid var(--line);
+    border-radius:999px;padding:3px 6px 3px 10px}
+  .chip input[type=color]{width:26px;height:26px;padding:0;border:none;background:none;cursor:pointer}
+  .chip .x{background:none;border:none;color:var(--dim);font-size:20px;line-height:1;cursor:pointer;padding:0 4px}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Radar kulcstartó</h1>
+  <div class="tabs" role="tablist">
+    <button class="tab on" id="tabMap" role="tab">Térkép</button>
+    <button class="tab" id="tab3d" role="tab">3D nézet</button>
+  </div>
+</header>
+
+<div id="stage">
+  <div class="view on" id="viewMap">
+    <div id="map"></div>
+    <div id="lens"></div>
+  </div>
+  <div class="view" id="view3d">
+    <div id="hint">Még nincs modell. A Térkép fülön válaszd ki a területet, majd nyomd meg a „Generálás” gombot.</div>
+  </div>
+</div>
+
+<div id="panel">
+  <div class="row">
+    <input type="text" id="q" placeholder="Hely keresése (pl. Budapest, Hősök tere)" aria-label="Hely keresése">
+    <button class="act" id="go">Keresés</button>
+  </div>
+  <div class="row">
+    <label for="dia">Átmérő</label>
+    <input type="range" id="dia" min="25" max="70" step="1" value="40">
+    <strong id="diaVal">40 mm</strong>
+  </div>
+  <div class="row">
+    <label for="detail">Úthálózat</label>
+    <select id="detail">
+      <option value="3">Csak főutak</option>
+      <option value="2">Főutak + mellékutak</option>
+      <option value="1" selected>Utcákkal együtt</option>
+      <option value="0">Mindennel (ösvények is)</option>
+    </select>
+    <span class="chk"><input type="checkbox" id="bld" checked><label for="bld">Épületek</label></span>
+    <span class="chk"><input type="checkbox" id="tab" checked><label for="tab">Kulcslyuk-fül</label></span>
+  </div>
+  <details id="stk" open>
+    <summary>Ikonok és szöveg<span id="cnt">0/5</span></summary>
+    <div id="iconGrid" class="igrid"></div>
+    <div class="row">
+      <input type="text" id="txt" maxlength="2" placeholder="Betű (max. 2)" aria-label="Szöveg, legfeljebb 2 karakter" style="max-width:150px;flex:0 1 150px">
+      <button class="act" id="addTxt">Szöveg hozzáadása</button>
+      <button class="act" id="upBtn">Saját kép</button>
+      <input type="file" id="up" accept="image/*" hidden>
+    </div>
+    <div id="chips" class="chips"></div>
+    <div class="row">
+      <label for="isz">Ikonméret</label>
+      <input type="range" id="isz" min="5" max="14" step="0.5" value="8">
+      <strong id="iszVal">8 mm</strong>
+    </div>
+    <div class="row">
+      <label for="place">Elhelyezés</label>
+      <select id="place">
+        <option value="mix">Vegyes</option>
+        <option value="edge">A szélén</option>
+        <option value="in">A térképen</option>
+      </select>
+      <button class="act" id="reroll">Újra elhelyezés</button>
+    </div>
+  </details>
+  <div id="info"></div>
+  <div class="row">
+    <button class="act main" id="gen">Generálás</button>
+    <button class="act" id="top" disabled>Felülnézet</button>
+    <button class="act" id="stl" disabled>STL letöltés</button>
+    <button class="act" id="stlLayers" disabled>Színenként külön STL</button>
+    <button class="act" id="test">Kapcsolat teszt</button>
+  </div>
+  <div id="status" role="status"></div>
+  <div class="legend">
+    <span><i class="sw" style="background:#cdcdcd;outline:1px solid #555"></i>alap</span>
+    <span><i class="sw" style="background:#6f9ac9;outline:1px solid #555"></i>víz</span>
+    <span><i class="sw" style="background:#5a8a35;outline:1px solid #555"></i>park</span>
+    <span><i class="sw" style="background:#f4f4f4;outline:1px solid #555"></i>épület</span>
+    <span><i class="sw" style="background:#262626;outline:1px solid #555"></i>út</span>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/STLExporter.js"></script>
+<script>
+(function(){
+'use strict';
+const $ = id => document.getElementById(id);
+
+/* ---------- Beállítások: színek és magasságok (mm) ---------- */
+const PAL = { base:'#cdcdcd', water:'#6f9ac9', park:'#5a8a35', building:'#f4f4f4', road:'#262626', rim:'#111111' };
+const BASE_T = 2.0;                                   // alaplap vastagsága
+const TOPS   = { water:2.4, park:2.4, road:2.8, building:3.0 };  // rétegek felső síkja
+const RIM_TOP = 3.4, RIM_W = 1.0;                     // keret magassága, szélessége
+const TAB_R = 4.4, TAB_HOLE = 2.0, TAB_OFFSET = 3.4;  // kulcslyuk-fül méretei
+
+/* ---------- Térkép és kör alakú kijelölő ---------- */
+const map = L.map('map').setView([47.4979, 19.0402], 16);
+const BASES = {
+  'Esri utcatérkép': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19, attribution: 'Térkép: &copy; Esri'
+  }),
+  'OSM Franciaország': L.tileLayer('https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png', {
+    subdomains: 'abc', maxZoom: 20, attribution: '&copy; OpenStreetMap közreműködők, OSM France'
+  }),
+  'Műhold (Esri)': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19, attribution: 'Térkép: &copy; Esri'
+  })
+};
+BASES['Esri utcatérkép'].addTo(map);
+L.control.layers(BASES, null, { position: 'topright' }).addTo(map);
+// ha az alaptérkép nem tölt be, automatikus váltás a következőre
+(function(){
+  let errs = 0; const first = BASES['Esri utcatérkép'];
+  first.on('tileerror', ()=>{
+    if(++errs === 4){ map.removeLayer(first); BASES['OSM Franciaország'].addTo(map); }
+  });
+})();
+
+function lensRadiusPx(){ return Math.min($('map').clientWidth, $('map').clientHeight) * 0.78 / 2; }
+function layoutLens(){
+  const d = lensRadiusPx()*2, l = $('lens');
+  l.style.width = l.style.height = d + 'px';
+  updateInfo();
+}
+function terrainRadius(){
+  const s = map.getSize(), r = lensRadiusPx();
+  const c = map.containerPointToLatLng([s.x/2, s.y/2]);
+  const e = map.containerPointToLatLng([s.x/2 + r, s.y/2]);
+  return map.distance(c, e);
+}
+function updateInfo(){
+  const R = terrainRadius(), D = +$('dia').value;
+  $('diaVal').textContent = D + ' mm';
+  $('info').textContent = 'A kör a terepen kb. ' + Math.round(R*2) + ' m átmérőjű, 1 mm ≈ ' + (R*2/D).toFixed(1) + ' m.';
+}
+map.on('move zoom moveend zoomend resize', updateInfo);
+window.addEventListener('resize', ()=>{ layoutLens(); if(renderer) resize3D(); });
+$('dia').addEventListener('input', updateInfo);
+layoutLens();
+
+async function search(){
+  const q = $('q').value.trim(); if(!q) return;
+  status('Keresés…');
+  try{
+    const r = await fetch('https://photon.komoot.io/api/?limit=1&q=' + encodeURIComponent(q));
+    const j = await r.json();
+    const f = j.features && j.features[0];
+    if(f){ map.setView([f.geometry.coordinates[1], f.geometry.coordinates[0]], 16); status(''); }
+    else status('Nincs találat erre: ' + q);
+  }catch(e){ status('A keresés nem sikerült. Ellenőrizd a hálózatot.'); }
+}
+$('go').addEventListener('click', search);
+$('q').addEventListener('keydown', e => { if(e.key==='Enter') search(); });
+
+function status(t){ $('status').textContent = t; }
+
+/* ---------- Fülek ---------- */
+function showTab(which){
+  const is3d = which === '3d';
+  $('viewMap').classList.toggle('on', !is3d);
+  $('view3d').classList.toggle('on', is3d);
+  $('tabMap').classList.toggle('on', !is3d);
+  $('tab3d').classList.toggle('on', is3d);
+  if(is3d){ init3D(); resize3D(); } else { map.invalidateSize(); layoutLens(); }
+}
+$('tabMap').addEventListener('click', ()=>showTab('map'));
+$('tab3d').addEventListener('click', ()=>showTab('3d'));
+
+/* ---------- Overpass letöltés ---------- */
+const ENDPOINTS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.openstreetmap.fr/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
+];
+async function fetchOSM(lat, lon, R, withBuildings, onStatus){
+  const dLat = R/110540, dLon = R/(111320*Math.cos(lat*Math.PI/180));
+  const bb = (lat-dLat)+','+(lon-dLon)+','+(lat+dLat)+','+(lon+dLon);
+  const W = (k, vals) => vals.map(v => 'way["'+k+'"="'+v+'"]('+bb+');').join('');
+  const REL = (k, vals) => vals.map(v => 'relation["type"="multipolygon"]["'+k+'"="'+v+'"]('+bb+');').join('');
+  const q = '[out:json][timeout:25];('
+    + 'way["highway"]('+bb+');'
+    + W('waterway', ['river','canal','stream','riverbank'])
+    + W('natural', ['water','wood','scrub','grassland'])
+    + W('landuse', ['reservoir','grass','forest','meadow','recreation_ground','village_green','cemetery'])
+    + W('leisure', ['park','garden','pitch','playground','golf_course','nature_reserve'])
+    + (withBuildings ? 'way["building"]('+bb+');' : '')
+    + REL('natural', ['water']) + REL('leisure', ['park']) + REL('landuse', ['forest','grass'])
+    + ');out geom;';
+  const errs = [], ctls = [];
+  if(onStatus) onStatus('Adatok letöltése (' + ENDPOINTS.length + ' szerver egyszerre, max. 25 mp)…');
+  const attempt = async (url) => {
+    const host = new URL(url).hostname, ctl = new AbortController();
+    ctls.push(ctl);
+    const to = setTimeout(()=>ctl.abort(), 25000);
+    try{
+      const r = await fetch(url + '?data=' + encodeURIComponent(q), { signal: ctl.signal });
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      return JSON.parse(await r.text());
+    }catch(e){
+      errs.push(host + ': ' + ((e && e.name==='AbortError') ? 'időtúllépés' : ((e && e.message) || e)));
+      throw e;
+    }finally{ clearTimeout(to); }
+  };
+  try{
+    const data = await Promise.any(ENDPOINTS.map(attempt));
+    ctls.forEach(c=>{ try{ c.abort(); }catch(_){} });
+    return data;
+  }catch(e){
+    throw new Error('Az Overpass nem érhető el. ' + errs.join(' | '));
+  }
+}
+
+/* ---------- 2D geometria segédek ---------- */
+const V2 = p => new THREE.Vector2(p[0], p[1]);
+function circlePoly(r, n, cx, cy){
+  cx = cx||0; cy = cy||0; const a = [];
+  for(let i=0;i<n;i++){ const t = i/n*Math.PI*2; a.push([cx+r*Math.cos(t), cy+r*Math.sin(t)]); }
+  return a;
+}
+function area(p){ let a=0; for(let i=0,j=p.length-1;i<p.length;j=i++) a += p[j][0]*p[i][1]-p[i][0]*p[j][1]; return a/2; }
+function simplify(pts, tol){
+  if(pts.length<3) return pts;
+  const out=[pts[0]];
+  for(let i=1;i<pts.length-1;i++){
+    const a=out[out.length-1], p=pts[i];
+    if(Math.hypot(p[0]-a[0],p[1]-a[1])>=tol) out.push(p);
+  }
+  out.push(pts[pts.length-1]); return out;
+}
+function clean(p){
+  const o=[];
+  for(const q of p){ const l=o[o.length-1]; if(!l||Math.hypot(q[0]-l[0],q[1]-l[1])>1e-5) o.push(q); }
+  while(o.length>1&&Math.hypot(o[0][0]-o[o.length-1][0],o[0][1]-o[o.length-1][1])<=1e-5) o.pop();
+  return o;
+}
+function pip(pt, poly){
+  let c=false;
+  for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+    const a=poly[i], b=poly[j];
+    if((a[1]>pt[1])!==(b[1]>pt[1]) && pt[0]<(b[0]-a[0])*(pt[1]-a[1])/(b[1]-a[1])+a[0]) c=!c;
+  }
+  return c;
+}
+// Sutherland–Hodgman: tetszőleges sokszög vágása KONVEX (CCW) vágósokszöggel
+function side(A,B,P){ return (B[0]-A[0])*(P[1]-A[1])-(B[1]-A[1])*(P[0]-A[0]); }
+function inter(S,E,A,B){
+  const d1x=E[0]-S[0], d1y=E[1]-S[1], d2x=B[0]-A[0], d2y=B[1]-A[1];
+  const den=d1x*d2y-d1y*d2x; if(Math.abs(den)<1e-12) return E;
+  const t=((A[0]-S[0])*d2y-(A[1]-S[1])*d2x)/den;
+  return [S[0]+t*d1x, S[1]+t*d1y];
+}
+function clip(subject, cp){
+  let out=subject;
+  for(let i=0;i<cp.length;i++){
+    const A=cp[i], B=cp[(i+1)%cp.length], inp=out; out=[];
+    if(!inp.length) break;
+    let S=inp[inp.length-1];
+    for(const E of inp){
+      const eIn=side(A,B,E)>=0, sIn=side(A,B,S)>=0;
+      if(eIn){ if(!sIn) out.push(inter(S,E,A,B)); out.push(E); }
+      else if(sIn) out.push(inter(S,E,A,B));
+      S=E;
+    }
+  }
+  return out;
+}
+// Multipolygon: szétszórt szakaszok összefűzése zárt gyűrűkké
+function stitch(ways){
+  const key = p => p.lat+','+p.lon;
+  const segs = ways.map(w=>w.slice()), rings=[];
+  while(segs.length){
+    let cur = segs.pop(), guard=0;
+    while(key(cur[0])!==key(cur[cur.length-1]) && guard++<20000){
+      const end = key(cur[cur.length-1]); let found=-1, rev=false;
+      for(let i=0;i<segs.length;i++){
+        if(key(segs[i][0])===end){ found=i; break; }
+        if(key(segs[i][segs[i].length-1])===end){ found=i; rev=true; break; }
+      }
+      if(found<0) break;
+      const s = segs.splice(found,1)[0]; if(rev) s.reverse();
+      cur = cur.concat(s.slice(1));
+    }
+    if(key(cur[0])===key(cur[cur.length-1]) && cur.length>3) rings.push(cur);
+  }
+  return rings;
+}
+
+/* ---------- Modellépítés ---------- */
+const ROAD_CLASS = { motorway:3,motorway_link:3,trunk:3,trunk_link:3,primary:3,primary_link:3,
+  secondary:2,secondary_link:2,tertiary:2,tertiary_link:2,
+  residential:1,unclassified:1,living_street:1,pedestrian:1,
+  service:0,footway:0,path:0,cycleway:0,steps:0,track:0,bridleway:0 };
+const ROAD_W = { 3:1.8, 2:1.4, 1:1.0, 0:0.8 };
+const PARK_LEIS = ['park','garden','pitch','playground','golf_course','nature_reserve'];
+const PARK_LAND = ['grass','forest','meadow','recreation_ground','village_green','cemetery'];
+const PARK_NAT  = ['wood','scrub','grassland'];
+function polyLayer(t){
+  if(t.building && t.building!=='no') return 'building';
+  if(t.natural==='water'||t.waterway==='riverbank'||t.landuse==='reservoir') return 'water';
+  if(PARK_LEIS.includes(t.leisure)||PARK_LAND.includes(t.landuse)||PARK_NAT.includes(t.natural)) return 'park';
+  return null;
+}
+function relLayer(t){
+  if(t.natural==='water') return 'water';
+  if(t.leisure==='park'||t.landuse==='forest'||t.landuse==='grass') return 'park';
+  return null;
+}
+
+function buildModel(osm, P){
+  const Rmm = P.D/2, s = Rmm/P.R;
+  const kx = 111320*Math.cos(P.lat0*Math.PI/180), ky = 110540;
+  const proj = g => g.map(p => [(p.lon-P.lon0)*kx*s, (p.lat-P.lat0)*ky*s]);
+  const clipR = Rmm - RIM_W + 0.2;
+  const CP = circlePoly(clipR, 96);
+  const f = Math.max(0.85, Math.min(1.4, P.D/40));
+  const LAY = { base:[], water:[], park:[], building:[], road:[], rim:[] };
+  const MIN_AREA = { building:0.8, park:3, water:3 };
+
+  function extrude(shape, z0, z1){
+    const g = new THREE.ExtrudeGeometry(shape, { depth: z1-z0, bevelEnabled:false });
+    g.translate(0,0,z0); return g;
+  }
+  function addPoly(layer, outer, holes){
+    const o = clean(clip(outer, CP));
+    if(o.length<3 || Math.abs(area(o))<0.04) return;
+    const sh = new THREE.Shape(o.map(V2));
+    for(const h of (holes||[])){
+      const c = clean(clip(h, CP));
+      if(c.length>=3 && Math.abs(area(c))>0.02) sh.holes.push(new THREE.Path(c.map(V2)));
+    }
+    try{ LAY[layer].push(extrude(sh, BASE_T-0.02, TOPS[layer])); }catch(e){}
+  }
+  function addRoad(layer, pts, w){
+    const h = w/2, lim = clipR + h;
+    for(let i=0;i<pts.length-1;i++){
+      const p=pts[i], q=pts[i+1];
+      if(Math.max(p[0],q[0])<-lim||Math.min(p[0],q[0])>lim||Math.max(p[1],q[1])<-lim||Math.min(p[1],q[1])>lim) continue;
+      const dx=q[0]-p[0], dy=q[1]-p[1], len=Math.hypot(dx,dy); if(len<1e-4) continue;
+      const nx=-dy/len*h, ny=dx/len*h;
+      addPoly(layer, [[p[0]+nx,p[1]+ny],[q[0]+nx,q[1]+ny],[q[0]-nx,q[1]-ny],[p[0]-nx,p[1]-ny]]);
+    }
+    for(const p of pts){
+      if(Math.hypot(p[0],p[1])>lim) continue;
+      addPoly(layer, circlePoly(h, 8, p[0], p[1]));
+    }
+  }
+  const closed = g => g.length>3 && g[0].lat===g[g.length-1].lat && g[0].lon===g[g.length-1].lon;
+
+  for(const el of osm.elements){
+    const t = el.tags || {};
+    if(el.type==='way' && el.geometry){
+      if(t.highway){
+        const cls = ROAD_CLASS[t.highway]; const c = (cls===undefined)?1:cls;
+        if(c < P.detail) continue;
+        addRoad('road', simplify(proj(el.geometry), 0.25), ROAD_W[c]*f);
+      } else if(t.waterway && t.waterway!=='riverbank'){
+        if(t.waterway==='stream' && P.detail>0) continue;
+        addRoad('water', simplify(proj(el.geometry), 0.25), (t.waterway==='stream'?0.9:1.8)*f);
+      } else {
+        const layer = polyLayer(t); if(!layer) continue;
+        if(!closed(el.geometry)) continue;
+        let pts = proj(el.geometry); pts.pop();
+        pts = simplify(pts, 0.12);
+        if(pts.length<3 || Math.abs(area(pts))<MIN_AREA[layer]) continue;
+        addPoly(layer, pts);
+      }
+    } else if(el.type==='relation' && el.members){
+      const layer = relLayer(t); if(!layer) continue;
+      const outers=[], inners=[];
+      for(const m of el.members){
+        if(m.type!=='way'||!m.geometry) continue;
+        (m.role==='inner'?inners:outers).push(m.geometry);
+      }
+      const oR = stitch(outers).map(r=>{ const p=proj(r); p.pop(); return simplify(p,0.12); });
+      const iR = stitch(inners).map(r=>{ const p=proj(r); p.pop(); return simplify(p,0.12); });
+      for(const o of oR){
+        if(o.length<3 || Math.abs(area(o))<MIN_AREA[layer]) continue;
+        addPoly(layer, o, iR.filter(h=>h.length>=3 && pip(h[0],o)));
+      }
+    }
+  }
+
+  // alaplap, keret, kulcslyuk-fül
+  LAY.base.push(extrude(new THREE.Shape(circlePoly(Rmm,128).map(V2)), 0, BASE_T));
+  const rim = new THREE.Shape(circlePoly(Rmm,128).map(V2));
+  rim.holes.push(new THREE.Path(circlePoly(Rmm-RIM_W,128).map(V2)));
+  LAY.rim.push(extrude(rim, 0, RIM_TOP));
+  if(P.tab){
+    const tab = new THREE.Shape(circlePoly(TAB_R,48,0,Rmm+TAB_OFFSET).map(V2));
+    tab.holes.push(new THREE.Path(circlePoly(TAB_HOLE,32,0,Rmm+TAB_OFFSET).map(V2)));
+    LAY.rim.push(extrude(tab, 0, RIM_TOP));
+  }
+
+  // rétegenként egy összefűzött háló
+  const group = new THREE.Group(); let tris = 0;
+  for(const name of ['base','water','park','building','road','rim']){
+    const gs = LAY[name]; if(!gs.length) continue;
+    let geo = null;
+    try{ geo = THREE.BufferGeometryUtils.mergeBufferGeometries(gs); }catch(e){}
+    if(!geo){ // tartalék: külön hálók
+      gs.forEach(g=>{ const m=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:PAL[name]})); m.name=name; group.add(m); });
+      continue;
+    }
+    gs.forEach(g=>g.dispose());
+    tris += geo.attributes.position.count/3;
+    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color:PAL[name], roughness:0.85, metalness:0 }));
+    mesh.name = name; group.add(mesh);
+  }
+  return { group, R:Rmm, tris:Math.round(tris), tab:P.tab };
+}
+
+/* ---------- Matricák: ikonok és szöveg ---------- */
+const GS = 96, PAD = 8, OUT_R = 6, ICON_OUT_TOP = 3.6, ICON_FILL_TOP = 4.0, MAX_ITEMS = 5;
+const TEXT_FONT = '90px "Rubik Mono One", Impact, "Arial Black", sans-serif';
+
+/*TRACE-START*/
+function signedArea(p){ let a=0; for(let i=0,j=p.length-1;i<p.length;j=i++) a+=p[j][0]*p[i][1]-p[i][0]*p[j][1]; return a/2; }
+function pipL(pt, poly){
+  let c=false;
+  for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+    const a=poly[i], b=poly[j];
+    if((a[1]>pt[1])!==(b[1]>pt[1]) && pt[0]<(b[0]-a[0])*(pt[1]-a[1])/(b[1]-a[1])+a[0]) c=!c;
+  }
+  return c;
+}
+function distSeg(p,a,b){
+  const dx=b[0]-a[0], dy=b[1]-a[1], l2=dx*dx+dy*dy;
+  if(!l2) return Math.hypot(p[0]-a[0],p[1]-a[1]);
+  let t=((p[0]-a[0])*dx+(p[1]-a[1])*dy)/l2; t=Math.max(0,Math.min(1,t));
+  return Math.hypot(p[0]-a[0]-t*dx, p[1]-a[1]-t*dy);
+}
+function dpOpen(pts,tol){
+  if(pts.length<3) return pts;
+  const a=pts[0], b=pts[pts.length-1]; let md=-1, mi=0;
+  for(let i=1;i<pts.length-1;i++){ const d=distSeg(pts[i],a,b); if(d>md){ md=d; mi=i; } }
+  if(md>tol){ const l=dpOpen(pts.slice(0,mi+1),tol), r=dpOpen(pts.slice(mi),tol); return l.slice(0,-1).concat(r); }
+  return [a,b];
+}
+function dpClosed(p,tol){
+  if(p.length<6) return p;
+  let mi=0, md=-1;
+  for(let i=1;i<p.length;i++){ const d=Math.hypot(p[i][0]-p[0][0],p[i][1]-p[0][1]); if(d>md){ md=d; mi=i; } }
+  const a=dpOpen(p.slice(0,mi+1),tol), b=dpOpen(p.slice(mi).concat([p[0]]),tol);
+  return a.slice(0,-1).concat(b.slice(0,-1));
+}
+// Bináris maszk (w×h) -> külső kontúrok + lyukak (pixelkoordináták, y lefelé)
+function traceShapes(m,w,h){
+  const at=(x,y)=>(x>=0&&x<w&&y>=0&&y<h)?m[y*w+x]:0;
+  const edges=[];
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+    if(!m[y*w+x]) continue;
+    if(!at(x,y-1)) edges.push([x,y,x+1,y]);
+    if(!at(x+1,y)) edges.push([x+1,y,x+1,y+1]);
+    if(!at(x,y+1)) edges.push([x+1,y+1,x,y+1]);
+    if(!at(x-1,y)) edges.push([x,y+1,x,y]);
+  }
+  const W1=w+1, starts=new Map();
+  edges.forEach((e,i)=>{ const k=e[1]*W1+e[0]; let l=starts.get(k); if(!l){ l=[]; starts.set(k,l); } l.push(i); });
+  const used=new Uint8Array(edges.length), loops=[];
+  for(let i=0;i<edges.length;i++){
+    if(used[i]) continue;
+    const pts=[]; let e=i;
+    while(e!==-1){
+      used[e]=1; pts.push([edges[e][0],edges[e][1]]);
+      const l=starts.get(edges[e][3]*W1+edges[e][2]); let nx=-1;
+      if(l){ for(const c of l){ if(!used[c]){ nx=c; break; } } }
+      e=nx;
+    }
+    if(pts.length>=4) loops.push(pts);
+  }
+  const outers=[], holes=[];
+  for(const p of loops){ const a=signedArea(p); (a>0?outers:holes).push({p:p, a:Math.abs(a), s:dpClosed(p,0.9)}); }
+  const res=outers.map(o=>({o:o, outer:o.s, holes:[]}));
+  for(const hl of holes){
+    const mid=[(hl.p[0][0]+hl.p[1][0])/2,(hl.p[0][1]+hl.p[1][1])/2];
+    let best=null;
+    for(const r of res){ if(pipL(mid,r.o.p) && (!best||r.o.a<best.o.a)) best=r; }
+    if(best && hl.s.length>=3) best.holes.push(hl.s);
+  }
+  return res.filter(r=>r.outer.length>=3).map(r=>({outer:r.outer, holes:r.holes}));
+}
+/*TRACE-END*/
+
+/* --- rajzoló segédek (100×100-as koordinátatér) --- */
+function poly(c,pts){ c.beginPath(); pts.forEach((p,i)=>{ if(i) c.lineTo(p[0],p[1]); else c.moveTo(p[0],p[1]); }); c.closePath(); c.fill(); }
+function rr(c,x,y,w,h,r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); c.fill(); }
+function disc(c,x,y,r){ c.beginPath(); c.arc(x,y,r,0,Math.PI*2); c.fill(); }
+function cut(c,fn){ c.save(); c.globalCompositeOperation='destination-out'; fn(); c.restore(); }
+function starPts(cx,cy,R,r,n){
+  const a=[]; for(let i=0;i<n*2;i++){ const rad=i%2?r:R, t=-Math.PI/2+i*Math.PI/n; a.push([cx+rad*Math.cos(t), cy+rad*Math.sin(t)]); }
+  return a;
+}
+
+/* --- 20 saját rajzolású radar-stílusú ikon --- */
+const ICONS = [
+  { key:'heart', name:'Szív', color:'#e0343a', draw(c){
+    c.beginPath(); c.moveTo(50,90); c.bezierCurveTo(5,55,8,14,34,14); c.bezierCurveTo(44,14,50,21,50,28);
+    c.bezierCurveTo(50,21,56,14,66,14); c.bezierCurveTo(92,14,95,55,50,90); c.fill(); } },
+  { key:'star', name:'Csillag', color:'#f7c531', draw(c){ poly(c, starPts(50,54,48,20,5)); } },
+  { key:'house', name:'Ház', color:'#4fae4a', draw(c){
+    poly(c,[[50,8],[96,50],[84,50],[84,92],[16,92],[16,50],[4,50]]); cut(c,()=>c.fillRect(42,62,16,30)); } },
+  { key:'dollar', name:'Dollár', color:'#3aa856', draw(c){
+    c.font='bold 118px "Rubik Mono One", Impact, sans-serif'; c.textAlign='center'; c.textBaseline='middle'; c.fillText('$',50,54); } },
+  { key:'skull', name:'Koponya', color:'#e8e8e8', draw(c){
+    disc(c,50,42,36); rr(c,29,62,42,28,6);
+    cut(c,()=>{ disc(c,36,44,9); disc(c,64,44,9); poly(c,[[50,52],[44,65],[56,65]]);
+      c.fillRect(41,76,3,14); c.fillRect(48.5,76,3,14); c.fillRect(56,76,3,14); }); } },
+  { key:'target', name:'Céltábla', color:'#e0343a', draw(c){
+    disc(c,50,50,46); cut(c,()=>disc(c,50,50,36)); disc(c,50,50,26); cut(c,()=>disc(c,50,50,14)); disc(c,50,50,6); } },
+  { key:'bolt', name:'Villám', color:'#f7c531', draw(c){ poly(c,[[58,4],[22,56],[44,56],[34,96],[78,40],[55,40]]); } },
+  { key:'key', name:'Kulcs', color:'#f2b632', draw(c){
+    c.save(); c.translate(50,50); c.rotate(-Math.PI/4); c.translate(-50,-50);
+    disc(c,20,50,19); cut(c,()=>disc(c,20,50,8)); c.fillRect(36,45,56,10); c.fillRect(68,55,8,14); c.fillRect(82,55,8,10); c.restore(); } },
+  { key:'car', name:'Autó', color:'#3a74d8', draw(c){
+    poly(c,[[4,64],[8,48],[26,45],[36,24],[68,24],[82,45],[95,50],[96,64]]);
+    cut(c,()=>{ disc(c,27,66,17); disc(c,73,66,17); poly(c,[[39,29],[64,29],[74,44],[33,44]]); });
+    disc(c,27,66,13); disc(c,73,66,13); c.fillRect(50,29,4,15);
+    cut(c,()=>{ disc(c,27,66,5); disc(c,73,66,5); }); } },
+  { key:'burger', name:'Hamburger', color:'#e8943a', draw(c){
+    c.beginPath(); c.arc(50,44,42,Math.PI,0); c.closePath(); c.fill();
+    rr(c,5,49,90,13,6); rr(c,10,67,80,22,9);
+    cut(c,()=>{ disc(c,32,26,3.5); disc(c,50,16,3.5); disc(c,68,26,3.5); }); } },
+  { key:'pistol', name:'Pisztoly', color:'#9a9a9a', draw(c){
+    rr(c,6,22,80,22,4); c.fillRect(84,26,10,14); poly(c,[[20,44],[46,44],[42,92],[22,92]]);
+    c.lineWidth=5; c.beginPath(); c.arc(56,50,12,0.1,Math.PI-0.1); c.stroke(); } },
+  { key:'diamond', name:'Gyémánt', color:'#44c7e8', draw(c){
+    poly(c,[[30,12],[70,12],[94,38],[50,92],[6,38]]);
+    cut(c,()=>{ c.lineWidth=3; c.beginPath(); c.moveTo(6,38); c.lineTo(94,38);
+      c.moveTo(30,12); c.lineTo(40,38); c.lineTo(50,92); c.moveTo(70,12); c.lineTo(60,38); c.lineTo(50,92); c.stroke(); }); } },
+  { key:'gear', name:'Fogaskerék', color:'#b0b0b0', draw(c){
+    for(let i=0;i<8;i++){ c.save(); c.translate(50,50); c.rotate(i*Math.PI/4); c.fillRect(-9,-47,18,26); c.restore(); }
+    disc(c,50,50,35); cut(c,()=>disc(c,50,50,14)); } },
+  { key:'plane', name:'Repülő', color:'#f4f4f4', draw(c){
+    poly(c,[[50,4],[57,30],[96,58],[96,68],[57,56],[54,80],[68,90],[68,96],[50,92],[32,96],[32,90],[46,80],[43,56],[4,68],[4,58],[43,30]]); } },
+  { key:'crown', name:'Korona', color:'#f7c531', draw(c){
+    poly(c,[[8,78],[4,24],[30,52],[50,12],[70,52],[96,24],[92,78]]); c.fillRect(8,82,84,10);
+    cut(c,()=>{ disc(c,50,64,5); disc(c,28,66,3.5); disc(c,72,66,3.5); }); } },
+  { key:'cocktail', name:'Koktél', color:'#e865a8', draw(c){
+    poly(c,[[4,10],[96,10],[50,58]]); c.fillRect(47,56,6,32); rr(c,24,86,52,9,3);
+    c.lineWidth=6; c.beginPath(); c.moveTo(60,32); c.lineTo(82,2); c.stroke(); } },
+  { key:'pizza', name:'Pizza', color:'#e8a03a', draw(c){
+    poly(c,[[50,94],[8,22],[92,22]]); rr(c,4,8,92,17,8);
+    cut(c,()=>{ disc(c,50,42,6); disc(c,34,34,4.5); disc(c,66,34,4.5); disc(c,50,64,5); }); } },
+  { key:'pin', name:'Helyjelölő', color:'#e0343a', draw(c){
+    disc(c,50,38,34); poly(c,[[20,56],[80,56],[50,98]]); cut(c,()=>disc(c,50,38,13)); } },
+  { key:'flag', name:'Zászló', color:'#e0343a', draw(c){
+    c.fillRect(12,4,8,92); c.beginPath(); c.moveTo(20,10); c.bezierCurveTo(40,0,58,22,90,10);
+    c.lineTo(90,54); c.bezierCurveTo(58,66,40,44,20,54); c.closePath(); c.fill(); } },
+  { key:'dumbbell', name:'Súlyzó', color:'#b5b5b5', draw(c){
+    c.fillRect(20,44,60,12); rr(c,8,24,14,52,4); rr(c,78,24,14,52,4); rr(c,0,36,8,28,3); rr(c,92,36,8,28,3); } }
+];
+
+/* --- maszkok: kitöltés + fekete körvonal (kitágítás) --- */
+function maskFromCanvas(cv){
+  const d=cv.getContext('2d').getImageData(0,0,cv.width,cv.height).data;
+  const m=new Uint8Array(cv.width*cv.height);
+  for(let i=0;i<m.length;i++) m[i]=d[i*4+3]>127?1:0;
+  return m;
+}
+function dilate(m,w,h,r){
+  const offs=[];
+  for(let dy=-r;dy<=r;dy++) for(let dx=-r;dx<=r;dx++) if(dx*dx+dy*dy<=r*r) offs.push([dx,dy]);
+  const out=new Uint8Array(w*h);
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+    if(!m[y*w+x]) continue;
+    for(const o of offs){ const X=x+o[0], Y=y+o[1]; if(X>=0&&X<w&&Y>=0&&Y<h) out[Y*w+X]=1; }
+  }
+  return out;
+}
+function finishMasks(fill,w,h){ return { w:w, h:h, fill:fill, out:dilate(fill,w,h,OUT_R) }; }
+function iconMasks(draw){
+  const cv=document.createElement('canvas'); cv.width=cv.height=GS;
+  const c=cv.getContext('2d',{willReadFrequently:true});
+  c.fillStyle='#000'; c.strokeStyle='#000';
+  c.save(); c.translate(PAD,PAD); const s=(GS-2*PAD)/100; c.scale(s,s); draw(c); c.restore();
+  return finishMasks(maskFromCanvas(cv),GS,GS);
+}
+function textMasks(text){
+  const mc=document.createElement('canvas').getContext('2d'); mc.font=TEXT_FONT;
+  const w=Math.ceil(mc.measureText(text).width)+2*PAD+4;
+  const cv=document.createElement('canvas'); cv.width=w; cv.height=GS;
+  const c=cv.getContext('2d',{willReadFrequently:true});
+  c.font=TEXT_FONT; c.textAlign='center'; c.textBaseline='middle'; c.fillStyle='#000';
+  c.fillText(text,w/2,GS/2+3);
+  return finishMasks(maskFromCanvas(cv),w,GS);
+}
+function customMasks(img){
+  const iw=img.naturalWidth||img.width||100, ih=img.naturalHeight||img.height||100;
+  const inner=GS-2*PAD, sc=Math.min(inner/iw, inner/ih);
+  const sw=Math.max(1,Math.round(iw*sc)), sh=Math.max(1,Math.round(ih*sc));
+  const t=document.createElement('canvas'); t.width=sw; t.height=sh;
+  const tc=t.getContext('2d',{willReadFrequently:true}); tc.drawImage(img,0,0,sw,sh);
+  const d=tc.getImageData(0,0,sw,sh).data;
+  const corners=[0,(sw-1)*4,(sh-1)*sw*4,((sh-1)*sw+sw-1)*4];
+  const alphaMode=corners.some(i=>d[i+3]<200), ref=[d[0],d[1],d[2]];
+  const fill=new Uint8Array(GS*GS), ox=Math.round((GS-sw)/2), oy=Math.round((GS-sh)/2);
+  for(let y=0;y<sh;y++) for(let x=0;x<sw;x++){
+    const i=(y*sw+x)*4; let on;
+    if(alphaMode) on=d[i+3]>127;
+    else { const dr=d[i]-ref[0], dg=d[i+1]-ref[1], db=d[i+2]-ref[2]; on=Math.sqrt(dr*dr+dg*dg+db*db)>70 && d[i+3]>127; }
+    if(on) fill[(y+oy)*GS+(x+ox)]=1;
+  }
+  return finishMasks(fill,GS,GS);
+}
+function hexToRgb(h){ const n=parseInt(h.slice(1),16); return [(n>>16)&255,(n>>8)&255,n&255]; }
+function thumbCanvas(m,color,px){
+  const c=document.createElement('canvas'); c.width=m.w; c.height=m.h;
+  const x=c.getContext('2d'), id=x.createImageData(m.w,m.h), rgb=hexToRgb(color);
+  for(let i=0;i<m.w*m.h;i++){
+    if(!m.out[i]) continue;
+    const f=m.fill[i];
+    id.data[i*4]=f?rgb[0]:17; id.data[i*4+1]=f?rgb[1]:17; id.data[i*4+2]=f?rgb[2]:17; id.data[i*4+3]=255;
+  }
+  x.putImageData(id,0,0);
+  c.style.height=px+'px'; c.style.width=(m.w/m.h*px)+'px';
+  return c;
+}
+
+/* --- betűtípus (Google Fonts) --- */
+let fontP=null;
+function fontReady(){
+  if(!fontP) fontP=(document.fonts&&document.fonts.load) ? document.fonts.load('90px "Rubik Mono One"','CJ$').catch(()=>{}) : Promise.resolve();
+  return fontP;
+}
+
+/* --- állapot és elhelyezés --- */
+const items=[]; let uid=0;
+function iconDef(key){ return ICONS.find(i=>i.key===key); }
+function iconMasksCached(ic){ if(!ic.m) ic.m=iconMasks(ic.draw); return ic.m; }
+function getMasks(it){
+  if(!it.masks){
+    if(it.kind==='icon') it.masks=iconMasksCached(iconDef(it.key));
+    else if(it.kind==='text') it.masks=textMasks(it.text);
+  }
+  return it.masks;
+}
+function stickerSize(){ return +$('isz').value; }
+function itemRadius(m,size){ return Math.max(m.w,m.h)*(size/GS)/2; }
+function itemPos(it,Rin,size,m){
+  const maxd=Math.max(m.w,m.h)*(size/GS);
+  let r;
+  if(it.mode==='edge') r=Math.max(0,Rin-maxd/2-0.3);
+  else r=it.f*Math.max(0,Rin-maxd/2-0.5);
+  return [r*Math.cos(it.a), r*Math.sin(it.a)];
+}
+function currentRin(){ return (current ? current.R : (+$('dia').value)/2) - RIM_W; }
+function placeItem(it){
+  const Rin=currentRin(), size=stickerSize(), m=getMasks(it), mode=$('place').value, rad=itemRadius(m,size);
+  for(let t=0;t<300;t++){
+    it.mode = mode==='mix' ? (Math.random()<0.5?'edge':'in') : mode;
+    it.a = Math.random()*Math.PI*2;
+    it.f = Math.sqrt(Math.random());
+    const p=itemPos(it,Rin,size,m);
+    let ok=true;
+    for(const o of items){
+      if(o===it || o.a===undefined) continue;
+      const mo=getMasks(o), q=itemPos(o,Rin,size,mo);
+      if(Math.hypot(p[0]-q[0],p[1]-q[1])<(rad+itemRadius(mo,size))*0.95){ ok=false; break; }
+    }
+    if(ok) return;
+  }
+}
+function reroll(){
+  items.forEach(o=>{ o.a=undefined; });
+  items.forEach(o=>placeItem(o));
+  applyIcons();
+}
+function addItem(def){
+  if(items.length>=MAX_ITEMS){ status('Legfeljebb ' + MAX_ITEMS + ' ikon vagy szöveg lehet a kulcstartón.'); return; }
+  const it=Object.assign({ id:++uid }, def);
+  items.push(it); placeItem(it); renderChips(); applyIcons();
+  if(!current) status('Az ikonok a Generálás után jelennek meg a 3D nézetben.');
+}
+
+/* --- 3D hálók --- */
+function shapesToGeoms(shapes,w,h,k,cx,cy,z0,z1){
+  const T=p=>new THREE.Vector2(cx+(p[0]-w/2)*k, cy-(p[1]-h/2)*k), out=[];
+  for(const s of shapes){
+    if(s.outer.length<3) continue;
+    const sh=new THREE.Shape(s.outer.map(T));
+    for(const hl of s.holes){ if(hl.length>=3) sh.holes.push(new THREE.Path(hl.map(T))); }
+    try{
+      const g=new THREE.ExtrudeGeometry(sh,{ depth:z1-z0, bevelEnabled:false });
+      g.translate(0,0,z0); out.push(g);
+    }catch(e){}
+  }
+  return out;
+}
+function addStickerMesh(gs,name,color){
+  if(!gs.length) return;
+  let geo=null;
+  try{ geo=THREE.BufferGeometryUtils.mergeBufferGeometries(gs); }catch(e){}
+  if(!geo) return;
+  gs.forEach(g=>g.dispose());
+  const mesh=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({ color:color, roughness:0.6, metalness:0 }));
+  mesh.name=name; current.group.add(mesh);
+}
+function applyIcons(){
+  if(!current) return;
+  for(const m of current.group.children.slice()){
+    if(m.name.indexOf('icon')===0){ current.group.remove(m); m.geometry.dispose(); m.material.dispose(); }
+  }
+  if(!items.length) return;
+  const size=stickerSize(), k=size/GS, Rin=current.R-RIM_W, outG=[];
+  items.forEach((it,i)=>{
+    const m=getMasks(it);
+    if(!m.so) m.so=traceShapes(m.out,m.w,m.h);
+    if(!m.sf) m.sf=traceShapes(m.fill,m.w,m.h);
+    if(it.a===undefined) placeItem(it);
+    const p=itemPos(it,Rin,size,m);
+    outG.push.apply(outG, shapesToGeoms(m.so,m.w,m.h,k,p[0],p[1],BASE_T-0.02,ICON_OUT_TOP));
+    addStickerMesh(shapesToGeoms(m.sf,m.w,m.h,k,p[0],p[1],ICON_OUT_TOP-0.02,ICON_FILL_TOP),'icon'+(i+1),it.color);
+  });
+  addStickerMesh(outG,'iconOutline','#111111');
+}
+
+/* --- felület --- */
+function buildGrid(){
+  const g=$('iconGrid'); g.innerHTML='';
+  ICONS.forEach(ic=>{
+    const b=document.createElement('button');
+    b.className='ib'; b.title=ic.name; b.setAttribute('aria-label',ic.name+' hozzáadása');
+    b.appendChild(thumbCanvas(iconMasksCached(ic),ic.color,38));
+    b.addEventListener('click',()=>addItem({ kind:'icon', key:ic.key, color:ic.color }));
+    g.appendChild(b);
+  });
+}
+function renderChips(){
+  const box=$('chips'); box.innerHTML='';
+  items.forEach((it,i)=>{
+    const chip=document.createElement('span'); chip.className='chip';
+    chip.appendChild(thumbCanvas(getMasks(it),it.color,24));
+    const col=document.createElement('input'); col.type='color'; col.value=it.color; col.setAttribute('aria-label','Szín');
+    col.addEventListener('change',()=>{ it.color=col.value; renderChips(); applyIcons(); });
+    const x=document.createElement('button'); x.className='x'; x.textContent='×'; x.setAttribute('aria-label','Eltávolítás');
+    x.addEventListener('click',()=>{ items.splice(i,1); renderChips(); applyIcons(); });
+    chip.appendChild(col); chip.appendChild(x); box.appendChild(chip);
+  });
+  $('cnt').textContent=items.length+'/'+MAX_ITEMS;
+}
+async function addTextItem(){
+  const t=$('txt').value.trim().toUpperCase();
+  if(!t) return;
+  if(items.length>=MAX_ITEMS){ status('Legfeljebb ' + MAX_ITEMS + ' ikon vagy szöveg lehet a kulcstartón.'); return; }
+  await fontReady();
+  addItem({ kind:'text', text:t, color:'#f4f4f4' });
+  $('txt').value='';
+}
+$('addTxt').addEventListener('click', addTextItem);
+$('txt').addEventListener('keydown', e=>{ if(e.key==='Enter') addTextItem(); });
+$('upBtn').addEventListener('click', ()=>$('up').click());
+$('up').addEventListener('change', e=>{
+  const f=e.target.files[0]; if(!f) return;
+  if(items.length>=MAX_ITEMS){ status('Legfeljebb ' + MAX_ITEMS + ' ikon vagy szöveg lehet a kulcstartón.'); e.target.value=''; return; }
+  const url=URL.createObjectURL(f), img=new Image();
+  img.onload=()=>{ const m=customMasks(img); URL.revokeObjectURL(url); addItem({ kind:'custom', color:'#f4f4f4', masks:m }); };
+  img.onerror=()=>status('A képet nem sikerült beolvasni.');
+  img.src=url; e.target.value='';
+});
+$('isz').addEventListener('input', ()=>{ $('iszVal').textContent=$('isz').value+' mm'; });
+$('isz').addEventListener('change', ()=>{ reroll(); });
+$('place').addEventListener('change', reroll);
+$('reroll').addEventListener('click', reroll);
+buildGrid(); renderChips();
+fontReady().then(()=>{ // a betűtípus megérkezése után a szöveges ikonok újrarajzolása
+  const d=iconDef('dollar'); d.m=null;
+  items.forEach(it=>{ if(it.kind==='icon'&&it.key==='dollar') it.masks=null; });
+  buildGrid(); renderChips(); applyIcons();
+});
+
+
+/* ---------- 3D nézet ---------- */
+let renderer, scene3, camera, controls, current=null;
+function init3D(){
+  if(renderer) return;
+  const el = $('view3d');
+  renderer = new THREE.WebGLRenderer({ antialias:true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+  el.insertBefore(renderer.domElement, el.firstChild);
+  scene3 = new THREE.Scene(); scene3.background = new THREE.Color(0x15171a);
+  camera = new THREE.PerspectiveCamera(35, 1, 0.1, 3000); camera.up.set(0,0,1);
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  scene3.add(new THREE.AmbientLight(0xffffff, 0.65));
+  const d1 = new THREE.DirectionalLight(0xffffff, 0.85); d1.position.set(30,-40,80); scene3.add(d1);
+  const d2 = new THREE.DirectionalLight(0xffffff, 0.3); d2.position.set(-40,30,30); scene3.add(d2);
+  camera.position.set(0,-60,60);
+  (function loop(){
+    requestAnimationFrame(loop);
+    if(!$('view3d').classList.contains('on')) return;
+    controls.update(); renderer.render(scene3, camera);
+  })();
+}
+function resize3D(){
+  const el = $('view3d'), w = el.clientWidth, h = el.clientHeight;
+  if(!w||!h||!renderer) return;
+  renderer.setSize(w,h); camera.aspect = w/h; camera.updateProjectionMatrix();
+}
+function setCamera(top){
+  if(!current) return;
+  const R = current.R;
+  controls.target.set(0, current.tab? R*0.12 : 0, BASE_T);
+  if(top) camera.position.set(0, -R*0.02, R*3.6);
+  else camera.position.set(0, -R*1.7, R*1.9);
+  controls.update();
+}
+function show3D(res){
+  init3D();
+  if(current){
+    scene3.remove(current.group);
+    current.group.traverse(o=>{ if(o.geometry) o.geometry.dispose(); if(o.material) o.material.dispose(); });
+  }
+  current = res; scene3.add(res.group); applyIcons();
+  $('hint').style.display = 'none';
+  ['top','stl','stlLayers'].forEach(id=>$(id).disabled=false);
+  showTab('3d'); setCamera(false);
+}
+$('top').addEventListener('click', ()=>setCamera(true));
+
+/* ---------- Generálás ---------- */
+$('gen').addEventListener('click', async ()=>{
+  const c = map.getCenter(), R = terrainRadius(), D = +$('dia').value;
+  if(R > 3000){ status('Túl nagy terület (max. kb. 3 km sugár). Nagyíts rá a térképen.'); return; }
+  const btn = $('gen'); btn.disabled = true;
+  try{
+    status('Adatok letöltése az OpenStreetMapről…');
+    const osm = await fetchOSM(c.lat, c.lng, R, $('bld').checked, status);
+    status('Modell építése…');
+    await new Promise(r=>setTimeout(r,30));
+    const res = buildModel(osm, { lat0:c.lat, lon0:c.lng, R, D,
+      detail:+$('detail').value, tab:$('tab').checked });
+    show3D(res);
+    status('Kész: ' + res.tris.toLocaleString('hu-HU') + ' háromszög, ' + D + ' mm átmérő.');
+  }catch(e){
+    status('Hiba: ' + (e.message||e));
+  }finally{ btn.disabled = false; }
+});
+
+
+/* ---------- Kapcsolat teszt ---------- */
+$('test').addEventListener('click', async ()=>{
+  status('Kapcsolat tesztelése…');
+  const res = await Promise.all(ENDPOINTS.map(async url=>{
+    const host = new URL(url).hostname, t0 = performance.now();
+    const ctl = new AbortController(), to = setTimeout(()=>ctl.abort(), 10000);
+    try{
+      const r = await fetch(url + '?data=' + encodeURIComponent('[out:json][timeout:5];node(1);out;'), { signal: ctl.signal });
+      return host + ': ' + (r.ok ? 'OK' : 'HTTP ' + r.status) + ' (' + Math.round(performance.now()-t0) + ' ms)';
+    }catch(e){
+      return host + ': ' + ((e && e.name==='AbortError') ? 'időtúllépés' : 'Failed to fetch');
+    }finally{ clearTimeout(to); }
+  }));
+  status(res.join(' | '));
+});
+
+/* ---------- STL export ---------- */
+function download(name, data){
+  const b = new Blob([data], { type:'application/octet-stream' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(b); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 3000);
+}
+$('stl').addEventListener('click', ()=>{
+  if(!current) return;
+  current.group.updateMatrixWorld(true);
+  download('radar-kulcstarto.stl', new THREE.STLExporter().parse(current.group, { binary:true }));
+});
+$('stlLayers').addEventListener('click', ()=>{
+  if(!current) return;
+  current.group.updateMatrixWorld(true);
+  const ex = new THREE.STLExporter();
+  current.group.children.forEach((m,i)=>{
+    setTimeout(()=>download('radar-kulcstarto-' + m.name + '.stl', ex.parse(m, { binary:true })), i*350);
+  });
+});
+})();
+</script>
+</body>
+</html>
