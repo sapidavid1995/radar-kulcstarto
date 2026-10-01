@@ -1206,7 +1206,11 @@ function buildFromCache(D, keepCamera){
   setModel(res,keepCamera);
 }
 async function ensureModel(){
+  // A térkép csak az 1. lépésben látható. Máshol a mérete nulla, ezért ott nem számolunk újra:
+  // a már elkészült modellt használjuk tovább.
+  if(step!==1 && current) return true;
   const c=map.getCenter(), R=terrainRadius(), D=+$('dia').value;
+  if(!(R>0)){ status('A kijelölt terület mérete nem olvasható. Térj vissza az 1. lépésre.',true); return false; }
   const fk=c.lat.toFixed(5)+','+c.lng.toFixed(5)+','+R.toFixed(1), bk=fk+','+D;
   if(current && builtKey===bk) return true;
   if(R>3000){ status('Túl nagy terület (max. kb. 3 km sugár). Nagyíts rá a térképen.',true); return false; }
