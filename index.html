@@ -153,20 +153,13 @@
       <input type="range" id="isz" min="5" max="14" step="0.5" value="8">
       <strong id="iszVal">8 mm</strong>
     </div>
-    <div class="row">
-      <label for="place">Elhelyezés</label>
-      <select id="place">
-        <option value="mix">Vegyes</option>
-        <option value="edge">A szélén</option>
-        <option value="in">A térképen</option>
-      </select>
-      <button class="act" id="reroll">Újra elhelyezés</button>
-    </div>
+    <div id="info2" style="color:var(--dim);font-size:13px;margin-top:8px">Az ikonok a Generálás után a 3D nézetben az „Ikonok mozgatása” gombbal húzhatók a helyükre.</div>
   </details>
   <div id="info"></div>
   <div class="row">
     <button class="act main" id="gen">Generálás</button>
     <button class="act" id="top" disabled>Felülnézet</button>
+    <button class="act" id="edit" disabled>Ikonok mozgatása</button>
     <button class="act" id="stl" disabled>STL letöltés</button>
     <button class="act" id="stlLayers" disabled>Színenként külön STL</button>
     <button class="act" id="test">Kapcsolat teszt</button>
@@ -730,8 +723,9 @@ function fontReady(){
   return fontP;
 }
 
-/* --- állapot és elhelyezés --- */
+/* --- állapot és kézi elhelyezés --- */
 const items=[]; let uid=0;
+let editMode=false, selected=null, drag=null, selRing=null, rafPending=false;
 function iconDef(key){ return ICONS.find(i=>i.key===key); }
 function iconMasksCached(ic){ if(!ic.m) ic.m=iconMasks(ic.draw); return ic.m; }
 function getMasks(it){
@@ -743,41 +737,106 @@ function getMasks(it){
 }
 function stickerSize(){ return +$('isz').value; }
 function itemRadius(m,size){ return Math.max(m.w,m.h)*(size/GS)/2; }
-function itemPos(it,Rin,size,m){
-  const maxd=Math.max(m.w,m.h)*(size/GS);
-  let r;
-  if(it.mode==='edge') r=Math.max(0,Rin-maxd/2-0.3);
-  else r=it.f*Math.max(0,Rin-maxd/2-0.5);
-  return [r*Math.cos(it.a), r*Math.sin(it.a)];
+function modelR(){ return current ? current.R : (+$('dia').value)/2; }
+function itemPos(it,R){ return [it.nx*R, it.ny*R]; }
+// az ikon (téglalap-közelítéssel) ne lógjon le a korongról
+function clampItem(it,R,size){
+  const m=getMasks(it), k=size/GS, hw=m.w*k/2, hh=m.h*k/2;
+  const x=it.nx*R, y=it.ny*R;
+  const ok=(X,Y)=>Math.hypot(Math.abs(X)+hw,Math.abs(Y)+hh)<=R-0.2;
+  if(ok(x,y)) return;
+  let lo=0, hi=1;
+  for(let i=0;i<20;i++){ const mid=(lo+hi)/2; if(ok(x*mid,y*mid)) lo=mid; else hi=mid; }
+  it.nx=x*lo/R; it.ny=y*lo/R;
 }
-function currentRin(){ return (current ? current.R : (+$('dia').value)/2) - RIM_W; }
+// új elem kezdőhelye: középen, vagy az első szabad helyen
 function placeItem(it){
-  const Rin=currentRin(), size=stickerSize(), m=getMasks(it), mode=$('place').value, rad=itemRadius(m,size);
-  for(let t=0;t<300;t++){
-    it.mode = mode==='mix' ? (Math.random()<0.5?'edge':'in') : mode;
-    it.a = Math.random()*Math.PI*2;
-    it.f = Math.sqrt(Math.random());
-    const p=itemPos(it,Rin,size,m);
+  const R=modelR(), size=stickerSize(), m=getMasks(it), rad=itemRadius(m,size);
+  const cands=[[0,0]];
+  [0.45,0.75].forEach(f=>{ for(let a=0;a<360;a+=45) cands.push([f*R*Math.cos(a*Math.PI/180), f*R*Math.sin(a*Math.PI/180)]); });
+  let pick=cands[0];
+  for(const c of cands){
     let ok=true;
     for(const o of items){
-      if(o===it || o.a===undefined) continue;
-      const mo=getMasks(o), q=itemPos(o,Rin,size,mo);
-      if(Math.hypot(p[0]-q[0],p[1]-q[1])<(rad+itemRadius(mo,size))*0.95){ ok=false; break; }
+      if(o===it) continue;
+      const q=itemPos(o,R), rr=itemRadius(getMasks(o),size);
+      if(Math.hypot(c[0]-q[0],c[1]-q[1])<(rad+rr)*0.9){ ok=false; break; }
     }
-    if(ok) return;
+    if(ok){ pick=c; break; }
   }
-}
-function reroll(){
-  items.forEach(o=>{ o.a=undefined; });
-  items.forEach(o=>placeItem(o));
-  applyIcons();
+  it.nx=pick[0]/R; it.ny=pick[1]/R; clampItem(it,R,size);
 }
 function addItem(def){
   if(items.length>=MAX_ITEMS){ status('Legfeljebb ' + MAX_ITEMS + ' ikon vagy szöveg lehet a kulcstartón.'); return; }
-  const it=Object.assign({ id:++uid }, def);
-  items.push(it); placeItem(it); renderChips(); applyIcons();
+  const it=Object.assign({ id:++uid, nx:0, ny:0 }, def);
+  items.push(it); placeItem(it); selected=it; renderChips(); applyIcons();
   if(!current) status('Az ikonok a Generálás után jelennek meg a 3D nézetben.');
+  else if(!editMode) status('Az ikon a közepén van. Nyomd meg az „Ikonok mozgatása” gombot, és húzd a helyére.');
 }
+
+/* --- ikonok mozgatása a 3D nézetben (felülnézet, húzással) --- */
+const rayc=new THREE.Raycaster(), ndc=new THREE.Vector2(), hitV=new THREE.Vector3();
+const dragPlane=new THREE.Plane(new THREE.Vector3(0,0,1), -ICON_FILL_TOP);
+function worldFromEvent(e){
+  const r=renderer.domElement.getBoundingClientRect();
+  ndc.set(((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1);
+  rayc.setFromCamera(ndc,camera);
+  return rayc.ray.intersectPlane(dragPlane,hitV);
+}
+function onDown(e){
+  if(!editMode||!current) return;
+  const p=worldFromEvent(e); if(!p) return;
+  const R=current.R, k=stickerSize()/GS;
+  let best=null, bd=1e9, bx=0, by=0;
+  items.forEach(it=>{
+    const m=getMasks(it), q=itemPos(it,R), rad=Math.max(m.w,m.h)*k/2, d=Math.hypot(p.x-q[0],p.y-q[1]);
+    if(d<=rad+1.5 && d<bd){ bd=d; best=it; bx=q[0]-p.x; by=q[1]-p.y; }
+  });
+  selected=best; drag=best?{ it:best, dx:bx, dy:by }:null;
+  if(best){ try{ renderer.domElement.setPointerCapture(e.pointerId); }catch(_){} }
+  updateRing();
+}
+function onMove(e){
+  if(!drag) return;
+  const p=worldFromEvent(e); if(!p) return;
+  const R=current.R;
+  drag.it.nx=(p.x+drag.dx)/R; drag.it.ny=(p.y+drag.dy)/R;
+  clampItem(drag.it,R,stickerSize());
+  if(!rafPending){ rafPending=true; requestAnimationFrame(()=>{ rafPending=false; applyIcons(); }); }
+}
+function onUp(e){ drag=null; try{ renderer.domElement.releasePointerCapture(e.pointerId); }catch(_){} }
+function attachEdit(){
+  const el=renderer.domElement;
+  el.addEventListener('pointerdown',onDown); el.addEventListener('pointermove',onMove);
+  el.addEventListener('pointerup',onUp); el.addEventListener('pointercancel',onUp);
+}
+function updateRing(){
+  if(!scene3) return;
+  if(!editMode||!selected||items.indexOf(selected)<0||!current){ if(selRing) selRing.visible=false; return; }
+  if(!selRing){
+    selRing=new THREE.Mesh(new THREE.RingGeometry(0.92,1,64), new THREE.MeshBasicMaterial({ color:0xf0b429, depthTest:false, transparent:true, opacity:0.95 }));
+    selRing.renderOrder=999; scene3.add(selRing);
+  }
+  const m=getMasks(selected), q=itemPos(selected,current.R), r=itemRadius(m,stickerSize())+0.6;
+  selRing.position.set(q[0],q[1],ICON_FILL_TOP+0.3); selRing.scale.set(r,r,1); selRing.visible=true;
+}
+function resetEdit(){
+  editMode=false; selected=null; drag=null;
+  $('edit').classList.remove('main'); $('edit').textContent='Ikonok mozgatása';
+  if(typeof controls!=='undefined' && controls) controls.enabled=true;
+  updateRing();
+}
+$('edit').addEventListener('click',()=>{
+  if(!current) return;
+  if(!editMode && !items.length){ status('Előbb adj hozzá ikont vagy szöveget.'); return; }
+  editMode=!editMode;
+  $('edit').classList.toggle('main',editMode);
+  $('edit').textContent=editMode?'Mozgatás kész':'Ikonok mozgatása';
+  controls.enabled=!editMode;
+  if(editMode){ setCamera(true); status('Húzd az ikont a kívánt helyre. A „Mozgatás kész” gombbal visszatérsz a forgatáshoz.'); }
+  else { selected=null; status(''); }
+  updateRing();
+});
 
 /* --- 3D hálók --- */
 function shapesToGeoms(shapes,w,h,k,cx,cy,z0,z1){
@@ -802,23 +861,37 @@ function addStickerMesh(gs,name,color){
   const mesh=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({ color:color, roughness:0.6, metalness:0 }));
   mesh.name=name; current.group.add(mesh);
 }
+function disposeCache(it){
+  if(it.cache){ it.cache.so.forEach(g=>g.dispose()); it.cache.sf.forEach(g=>g.dispose()); it.cache=null; }
+}
+function itemCache(it,size){
+  if(!it.cache || it.cache.size!==size){
+    disposeCache(it);
+    const m=getMasks(it), k=size/GS;
+    if(!m.so) m.so=traceShapes(m.out,m.w,m.h);
+    if(!m.sf) m.sf=traceShapes(m.fill,m.w,m.h);
+    it.cache={ size:size,
+      so:shapesToGeoms(m.so,m.w,m.h,k,0,0,BASE_T-0.02,ICON_OUT_TOP),
+      sf:shapesToGeoms(m.sf,m.w,m.h,k,0,0,ICON_OUT_TOP-0.02,ICON_FILL_TOP) };
+  }
+  return it.cache;
+}
 function applyIcons(){
   if(!current) return;
   for(const m of current.group.children.slice()){
     if(m.name.indexOf('icon')===0){ current.group.remove(m); m.geometry.dispose(); m.material.dispose(); }
   }
-  if(!items.length) return;
-  const size=stickerSize(), k=size/GS, Rin=current.R-RIM_W, outG=[];
-  items.forEach((it,i)=>{
-    const m=getMasks(it);
-    if(!m.so) m.so=traceShapes(m.out,m.w,m.h);
-    if(!m.sf) m.sf=traceShapes(m.fill,m.w,m.h);
-    if(it.a===undefined) placeItem(it);
-    const p=itemPos(it,Rin,size,m);
-    outG.push.apply(outG, shapesToGeoms(m.so,m.w,m.h,k,p[0],p[1],BASE_T-0.02,ICON_OUT_TOP));
-    addStickerMesh(shapesToGeoms(m.sf,m.w,m.h,k,p[0],p[1],ICON_OUT_TOP-0.02,ICON_FILL_TOP),'icon'+(i+1),it.color);
-  });
-  addStickerMesh(outG,'iconOutline','#111111');
+  if(items.length){
+    const size=stickerSize(), R=current.R, outG=[];
+    const mv=(gs,x,y)=>gs.map(g=>g.clone().translate(x,y,0));
+    items.forEach((it,i)=>{
+      const c=itemCache(it,size), p=itemPos(it,R);
+      outG.push.apply(outG, mv(c.so,p[0],p[1]));
+      addStickerMesh(mv(c.sf,p[0],p[1]),'icon'+(i+1),it.color);
+    });
+    addStickerMesh(outG,'iconOutline','#111111');
+  }
+  updateRing();
 }
 
 /* --- felület --- */
@@ -840,7 +913,7 @@ function renderChips(){
     const col=document.createElement('input'); col.type='color'; col.value=it.color; col.setAttribute('aria-label','Szín');
     col.addEventListener('change',()=>{ it.color=col.value; renderChips(); applyIcons(); });
     const x=document.createElement('button'); x.className='x'; x.textContent='×'; x.setAttribute('aria-label','Eltávolítás');
-    x.addEventListener('click',()=>{ items.splice(i,1); renderChips(); applyIcons(); });
+    x.addEventListener('click',()=>{ disposeCache(it); if(selected===it) selected=null; items.splice(i,1); renderChips(); applyIcons(); });
     chip.appendChild(col); chip.appendChild(x); box.appendChild(chip);
   });
   $('cnt').textContent=items.length+'/'+MAX_ITEMS;
@@ -865,13 +938,15 @@ $('up').addEventListener('change', e=>{
   img.src=url; e.target.value='';
 });
 $('isz').addEventListener('input', ()=>{ $('iszVal').textContent=$('isz').value+' mm'; });
-$('isz').addEventListener('change', ()=>{ reroll(); });
-$('place').addEventListener('change', reroll);
-$('reroll').addEventListener('click', reroll);
+$('isz').addEventListener('change', ()=>{
+  const R=modelR(), size=stickerSize();
+  items.forEach(it=>{ disposeCache(it); clampItem(it,R,size); });
+  applyIcons();
+});
 buildGrid(); renderChips();
 fontReady().then(()=>{ // a betűtípus megérkezése után a szöveges ikonok újrarajzolása
   const d=iconDef('dollar'); d.m=null;
-  items.forEach(it=>{ if(it.kind==='icon'&&it.key==='dollar') it.masks=null; });
+  items.forEach(it=>{ if(it.kind==='icon'&&it.key==='dollar'){ it.masks=null; disposeCache(it); } });
   buildGrid(); renderChips(); applyIcons();
 });
 
@@ -884,6 +959,7 @@ function init3D(){
   renderer = new THREE.WebGLRenderer({ antialias:true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
   el.insertBefore(renderer.domElement, el.firstChild);
+  attachEdit();
   scene3 = new THREE.Scene(); scene3.background = new THREE.Color(0x15171a);
   camera = new THREE.PerspectiveCamera(35, 1, 0.1, 3000); camera.up.set(0,0,1);
   controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -919,8 +995,8 @@ function show3D(res){
   }
   current = res; scene3.add(res.group); applyIcons();
   $('hint').style.display = 'none';
-  ['top','stl','stlLayers'].forEach(id=>$(id).disabled=false);
-  showTab('3d'); setCamera(false);
+  ['top','edit','stl','stlLayers'].forEach(id=>$(id).disabled=false);
+  showTab('3d'); setCamera(false); resetEdit();
 }
 $('top').addEventListener('click', ()=>setCamera(true));
 
