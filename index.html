@@ -82,6 +82,17 @@
   .sw2{display:flex;align-items:center;gap:10px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer}
   .sw2 input{width:32px;height:32px;padding:0;border:none;background:none;cursor:pointer}
 
+  .cards{display:grid;gap:8px;margin-bottom:6px}
+  .card{
+    display:flex;flex-direction:column;align-items:flex-start;gap:5px;text-align:left;width:100%;
+    padding:12px 14px;border-radius:12px;background:var(--bg);border:1px solid var(--line);cursor:pointer;
+  }
+  .card .sub{color:var(--dim);font-size:13px}
+  .card.on{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+  .card:disabled{opacity:.55;cursor:default}
+  .card .tag{font-size:12px;background:var(--panel2);padding:2px 10px;border-radius:999px;color:var(--accent)}
+  .card .dots{display:flex;gap:5px;margin-top:2px}
+  .card .dots i{width:18px;height:18px;border-radius:50%;border:1px solid rgba(255,255,255,.28);display:block}
   #cnt{color:var(--accent);font-weight:400;font-size:15px;margin-left:6px}
   .igrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(56px,1fr));gap:6px;margin-bottom:16px}
   .ib{height:56px;display:flex;align-items:center;justify-content:center;background:var(--bg);
@@ -162,7 +173,7 @@
   <h1>Radar kulcstartó</h1>
   <nav id="stepper" aria-label="Lépések">
     <button class="st on" data-go="1"><b>1</b><span>Terület</span></button>
-    <button class="st" data-go="2"><b>2</b><span>Megjelenés</span></button>
+    <button class="st" data-go="2"><b>2</b><span>Stílus</span></button>
     <button class="st" data-go="3"><b>3</b><span>Ikonok</span></button>
     <button class="st" data-go="4"><b>4</b><span>Letöltés</span></button>
   </nav>
@@ -194,8 +205,10 @@
     </section>
 
     <section class="step" data-step="2">
-      <h2>Megjelenés</h2>
-      <p class="lead">A változtatások azonnal látszanak a 3D nézetben.</p>
+      <h2>Stílus és megjelenés</h2>
+      <p class="lead">Válaszd ki a radar stílusát, majd finomhangold a részleteket. A változtatások azonnal látszanak a 3D nézetben.</p>
+      <div id="styleCards" class="cards"></div>
+      <h3>Részletek</h3>
       <div class="field">
         <label for="detail">Úthálózat részletessége</label>
         <select id="detail">
@@ -209,7 +222,7 @@
       <label class="check"><input type="checkbox" id="tab" checked> Kulcslyuk-fül</label>
       <h3>Színek</h3>
       <div id="palette" class="palette"></div>
-      <button class="btn" id="palReset">Eredeti GTA színek</button>
+      <button class="btn" id="palReset">A stílus eredeti színei</button>
     </section>
 
     <section class="step" data-step="3">
@@ -241,7 +254,7 @@
       <ul class="tips">
         <li>Fúvóka: 0,4 mm, rétegmagasság: 0,12–0,2 mm.</li>
         <li>Többszínű nyomtatáshoz a színenkénti fájlokat töltsd be együtt, egy tárgyként (pl. Bambu Studióban), mert a helyzetük egyezik.</li>
-        <li>A kulcstartó teljes magassága kb. 4 mm.</li>
+        <li>A kulcstartó teljes magassága kb. 4–4,3 mm.</li>
       </ul>
     </section>
 
@@ -675,6 +688,19 @@ function buildModel(osm, P){
 
 /* ---------- Matricák: ikonok és szöveg ---------- */
 const GS = 96, PAD = 8, OUT_R = 6, ICON_OUT_TOP = 3.6, ICON_FILL_TOP = 4.0, MAX_ITEMS = 5;
+const BADGE_TOP = 3.9, GLYPH_TOP = 4.3;   // címkés (Vice City) ikonoknál: címke és jel magassága
+
+/* --- radar-stílusok --- */
+const STYLES = {
+  sa:{ name:'GTA: San Andreas', sub:'Szürke radar, fekete utak', frame:'plain', outline:'#111111',
+       pal:{ base:'#8f959b', water:'#6f9ac9', park:'#5a8a35', building:'#f5f5f5', road:'#262626', rim:'#111111' } },
+  vc:{ name:'GTA: Vice City', sub:'Rózsaszín keret, kék címkés ikonok', frame:'badge', outline:'#16233a', badge:'#59b4ee', glyph:'#ffffff',
+       pal:{ base:'#b2b7bd', water:'#9ccbf2', park:'#2f9e5c', building:'#f6f6f6', road:'#141414', rim:'#d96fe3' } },
+  gta4:{ name:'GTA IV', sub:'Hamarosan érkezik', soon:true }
+};
+let styleKey='sa';
+function curStyle(){ return STYLES[styleKey]; }
+function frameMode(){ return curStyle().frame || 'plain'; }
 const TEXT_FONT = '90px "Rubik Mono One", Impact, "Arial Black", sans-serif';
 
 /*TRACE-START*/
@@ -813,6 +839,38 @@ const ICONS = [
   { key:'dumbbell', name:'Súlyzó', color:'#b5b5b5', draw(c){
     c.fillRect(20,44,60,12); rr(c,8,24,14,52,4); rr(c,78,24,14,52,4); rr(c,0,36,8,28,3); rr(c,92,36,8,28,3); } }
 ];
+ICONS.push(
+  { key:'palm', name:'Pálmafa', color:'#2f9e5c', only:'vc', draw(c){
+    c.lineWidth=8; c.lineCap='round'; c.beginPath(); c.moveTo(48,96); c.quadraticCurveTo(44,64,56,38); c.stroke();
+    [-2.9,-2.3,-1.6,-0.9,-0.2,0.5].forEach(a=>{ c.save(); c.translate(56,38); c.rotate(a); c.beginPath(); c.moveTo(0,0);
+      c.quadraticCurveTo(22,-18,44,8); c.quadraticCurveTo(22,-3,0,0); c.fill(); c.restore(); });
+    disc(c,53,44,5); } },
+  { key:'tape', name:'Kazetta', color:'#e865a8', only:'vc', draw(c){
+    rr(c,4,20,92,60,7); cut(c,()=>{ disc(c,32,48,11); disc(c,68,48,11); c.fillRect(34,62,32,10); });
+    disc(c,32,48,5); disc(c,68,48,5); } },
+  { key:'spray', name:'Festékspray', color:'#44c7e8', only:'vc', draw(c){
+    rr(c,32,34,36,60,6); rr(c,39,18,22,20,3); c.fillRect(46,6,8,14);
+    disc(c,24,14,3.5); disc(c,16,26,3.5); disc(c,30,28,3.5); cut(c,()=>c.fillRect(38,52,24,5)); } },
+  { key:'shirt', name:'Póló', color:'#f4f4f4', only:'vc', draw(c){
+    poly(c,[[30,10],[42,16],[58,16],[70,10],[96,32],[82,48],[72,42],[72,92],[28,92],[28,42],[18,48],[4,32]]);
+    cut(c,()=>{ c.beginPath(); c.ellipse(50,14,10,7,0,0,Math.PI); c.fill(); }); } },
+  { key:'clapper', name:'Filmklapper', color:'#f4f4f4', only:'vc', draw(c){
+    rr(c,6,40,88,52,4);
+    c.save(); c.translate(8,36); c.rotate(-0.16); rr(c,0,-20,86,20,3);
+    cut(c,()=>{ [12,32,52,72].forEach(x=>poly(c,[[x,-20],[x+7,-20],[x+3,0],[x-4,0]])); }); c.restore();
+    cut(c,()=>c.fillRect(16,58,40,5)); } },
+  { key:'anchor', name:'Horgony', color:'#44c7e8', only:'vc', draw(c){
+    disc(c,50,16,11); cut(c,()=>disc(c,50,16,4.5)); c.fillRect(46,24,8,58); c.fillRect(30,34,40,7);
+    c.lineWidth=8; c.beginPath(); c.arc(50,52,32,0.05*Math.PI,0.95*Math.PI); c.stroke();
+    poly(c,[[8,46],[26,46],[17,62]]); poly(c,[[74,46],[92,46],[83,62]]); } },
+  { key:'sun', name:'Nap', color:'#f7c531', only:'vc', draw(c){
+    disc(c,50,50,24); for(let i=0;i<8;i++){ c.save(); c.translate(50,50); c.rotate(i*Math.PI/4); c.fillRect(-5,-47,10,17); c.restore(); } } },
+  { key:'cherry', name:'Cseresznye', color:'#e0343a', only:'vc', draw(c){
+    disc(c,30,72,17); disc(c,70,72,17);
+    c.lineWidth=5; c.beginPath(); c.moveTo(30,56); c.quadraticCurveTo(36,30,58,12); c.moveTo(70,56); c.quadraticCurveTo(64,30,58,12); c.stroke();
+    poly(c,[[58,12],[82,6],[72,26]]); cut(c,()=>{ disc(c,24,66,4); disc(c,64,66,4); }); } }
+);
+function iconsForStyle(){ return ICONS.filter(i=>!i.only || i.only===styleKey); }
 
 /* --- maszkok: kitöltés + fekete körvonal (kitágítás) --- */
 function maskFromCanvas(cv){
@@ -832,21 +890,39 @@ function dilate(m,w,h,r){
   return out;
 }
 function finishMasks(fill,w,h){ return { w:w, h:h, fill:fill, out:dilate(fill,w,h,OUT_R) }; }
-function iconMasks(draw){
+function roundRectMask(x,y,w,h,r,cw,ch){
+  const cv=document.createElement('canvas'); cv.width=cw; cv.height=ch;
+  const c=cv.getContext('2d',{willReadFrequently:true}); c.fillStyle='#000'; rr(c,x,y,w,h,r);
+  return maskFromCanvas(cv);
+}
+function iconMasks(draw, frame){
   const cv=document.createElement('canvas'); cv.width=cv.height=GS;
   const c=cv.getContext('2d',{willReadFrequently:true});
   c.fillStyle='#000'; c.strokeStyle='#000';
+  if(frame==='badge'){
+    // lekerekített négyzet alakú címke, benne kisebb jellel (Vice City-s radar-ikon hangulat)
+    const inset=PAD+13, size=GS-2*inset;
+    c.save(); c.translate(inset,inset); c.scale(size/100,size/100); draw(c); c.restore();
+    const glyph=maskFromCanvas(cv);
+    const badge=roundRectMask(PAD,PAD,GS-2*PAD,GS-2*PAD,18,GS,GS);
+    return { w:GS, h:GS, fill:badge, out:dilate(badge,GS,GS,OUT_R), glyph:glyph };
+  }
   c.save(); c.translate(PAD,PAD); const s=(GS-2*PAD)/100; c.scale(s,s); draw(c); c.restore();
   return finishMasks(maskFromCanvas(cv),GS,GS);
 }
-function textMasks(text){
-  const mc=document.createElement('canvas').getContext('2d'); mc.font=TEXT_FONT;
-  const w=Math.ceil(mc.measureText(text).width)+2*PAD+4;
+function textMasks(text, frame){
+  const badge=(frame==='badge');
+  const font = badge ? '66px "Rubik Mono One", Impact, "Arial Black", sans-serif' : TEXT_FONT;
+  const mc=document.createElement('canvas').getContext('2d'); mc.font=font;
+  const w=Math.ceil(mc.measureText(text).width)+2*PAD+4+(badge?28:0);
   const cv=document.createElement('canvas'); cv.width=w; cv.height=GS;
   const c=cv.getContext('2d',{willReadFrequently:true});
-  c.font=TEXT_FONT; c.textAlign='center'; c.textBaseline='middle'; c.fillStyle='#000';
+  c.font=font; c.textAlign='center'; c.textBaseline='middle'; c.fillStyle='#000';
   c.fillText(text,w/2,GS/2+3);
-  return finishMasks(maskFromCanvas(cv),w,GS);
+  const glyph=maskFromCanvas(cv);
+  if(!badge) return finishMasks(glyph,w,GS);
+  const bm=roundRectMask(PAD,PAD,w-2*PAD,GS-2*PAD,18,w,GS);
+  return { w:w, h:GS, fill:bm, out:dilate(bm,w,GS,OUT_R), glyph:glyph };
 }
 function customMasks(img){
   const iw=img.naturalWidth||img.width||100, ih=img.naturalHeight||img.height||100;
@@ -867,13 +943,14 @@ function customMasks(img){
   return finishMasks(fill,GS,GS);
 }
 function hexToRgb(h){ const n=parseInt(h.slice(1),16); return [(n>>16)&255,(n>>8)&255,n&255]; }
-function thumbCanvas(m,color,px){
+function thumbCanvas(m,color,px,glyphColor){
   const c=document.createElement('canvas'); c.width=m.w; c.height=m.h;
   const x=c.getContext('2d'), id=x.createImageData(m.w,m.h), rgb=hexToRgb(color);
+  const oc=hexToRgb(curStyle().outline||'#111111'), gc=m.glyph?hexToRgb(glyphColor||'#ffffff'):null;
   for(let i=0;i<m.w*m.h;i++){
     if(!m.out[i]) continue;
-    const f=m.fill[i];
-    id.data[i*4]=f?rgb[0]:17; id.data[i*4+1]=f?rgb[1]:17; id.data[i*4+2]=f?rgb[2]:17; id.data[i*4+3]=255;
+    let r=oc; if(m.fill[i]) r=rgb; if(gc && m.glyph[i]) r=gc;
+    id.data[i*4]=r[0]; id.data[i*4+1]=r[1]; id.data[i*4+2]=r[2]; id.data[i*4+3]=255;
   }
   x.putImageData(id,0,0);
   c.style.height=px+'px'; c.style.width=(m.w/m.h*px)+'px';
@@ -891,11 +968,11 @@ function fontReady(){
 const items=[]; let uid=0;
 let editMode=false, selected=null, drag=null, selRing=null, rafPending=false;
 function iconDef(key){ return ICONS.find(i=>i.key===key); }
-function iconMasksCached(ic){ if(!ic.m) ic.m=iconMasks(ic.draw); return ic.m; }
+function iconMasksCached(ic){ const f=frameMode(); ic.mc=ic.mc||{}; if(!ic.mc[f]) ic.mc[f]=iconMasks(ic.draw,f); return ic.mc[f]; }
 function getMasks(it){
   if(!it.masks){
     if(it.kind==='icon') it.masks=iconMasksCached(iconDef(it.key));
-    else if(it.kind==='text') it.masks=textMasks(it.text);
+    else if(it.kind==='text') it.masks=textMasks(it.text,frameMode());
   }
   return it.masks;
 }
@@ -1017,17 +1094,19 @@ function addStickerMesh(gs,name,color){
   mesh.name=name; current.group.add(mesh);
 }
 function disposeCache(it){
-  if(it.cache){ it.cache.so.forEach(g=>g.dispose()); it.cache.sf.forEach(g=>g.dispose()); it.cache=null; }
+  if(it.cache){ ['so','sf','sg'].forEach(k=>(it.cache[k]||[]).forEach(g=>g.dispose())); it.cache=null; }
 }
 function itemCache(it,size){
   if(!it.cache || it.cache.size!==size){
     disposeCache(it);
-    const m=getMasks(it), k=size/GS;
+    const m=getMasks(it), k=size/GS, fillTop=m.glyph?BADGE_TOP:ICON_FILL_TOP;
     if(!m.so) m.so=traceShapes(m.out,m.w,m.h);
     if(!m.sf) m.sf=traceShapes(m.fill,m.w,m.h);
+    if(m.glyph && !m.sg) m.sg=traceShapes(m.glyph,m.w,m.h);
     it.cache={ size:size,
       so:shapesToGeoms(m.so,m.w,m.h,k,0,0,BASE_T-0.01,ICON_OUT_TOP),
-      sf:shapesToGeoms(m.sf,m.w,m.h,k,0,0,ICON_OUT_TOP-0.02,ICON_FILL_TOP) };
+      sf:shapesToGeoms(m.sf,m.w,m.h,k,0,0,ICON_OUT_TOP-0.02,fillTop),
+      sg:m.glyph ? shapesToGeoms(m.sg,m.w,m.h,k,0,0,BADGE_TOP-0.02,GLYPH_TOP) : [] };
   }
   return it.cache;
 }
@@ -1043,33 +1122,42 @@ function applyIcons(){
       const c=itemCache(it,size), p=itemPos(it,R);
       outG.push.apply(outG, mv(c.so,p[0],p[1]));
       addStickerMesh(mv(c.sf,p[0],p[1]),'icon'+(i+1),it.color);
+      if(c.sg.length) addStickerMesh(mv(c.sg,p[0],p[1]),'iconG'+(i+1),it.glyph||'#ffffff');
     });
-    addStickerMesh(outG,'iconOutline','#111111');
+    addStickerMesh(outG,'iconOutline',curStyle().outline||'#111111');
   }
   updateRing();
 }
 
 /* --- felület --- */
+function defIconColor(ic){ return frameMode()==='badge' ? curStyle().badge : ic.color; }
+function defTextColor(){ return frameMode()==='badge' ? curStyle().badge : '#f4f4f4'; }
 function buildGrid(){
   const g=$('iconGrid'); g.innerHTML='';
-  ICONS.forEach(ic=>{
+  iconsForStyle().forEach(ic=>{
     const b=document.createElement('button');
     b.className='ib'; b.title=ic.name; b.setAttribute('aria-label',ic.name+' hozzáadása');
-    b.appendChild(thumbCanvas(iconMasksCached(ic),ic.color,38));
-    b.addEventListener('click',()=>addItem({ kind:'icon', key:ic.key, color:ic.color }));
+    b.appendChild(thumbCanvas(iconMasksCached(ic),defIconColor(ic),38,curStyle().glyph));
+    b.addEventListener('click',()=>addItem({ kind:'icon', key:ic.key, color:defIconColor(ic), glyph:curStyle().glyph||'#ffffff' }));
     g.appendChild(b);
   });
 }
 function renderChips(){
   const box=$('chips'); box.innerHTML='';
   items.forEach((it,i)=>{
+    const m=getMasks(it);
     const chip=document.createElement('span'); chip.className='chip';
-    chip.appendChild(thumbCanvas(getMasks(it),it.color,24));
-    const col=document.createElement('input'); col.type='color'; col.value=it.color; col.setAttribute('aria-label','Szín');
-    col.addEventListener('change',()=>{ it.color=col.value; renderChips(); applyIcons(); });
+    chip.appendChild(thumbCanvas(m,it.color,24,it.glyph));
+    const mk=(val,label,set)=>{
+      const col=document.createElement('input'); col.type='color'; col.value=val; col.title=label; col.setAttribute('aria-label',label);
+      col.addEventListener('change',()=>{ set(col.value); renderChips(); applyIcons(); });
+      chip.appendChild(col);
+    };
+    mk(it.color, m.glyph?'Címke színe':'Szín', v=>{ it.color=v; });
+    if(m.glyph) mk(it.glyph||'#ffffff','Jel színe', v=>{ it.glyph=v; });
     const x=document.createElement('button'); x.className='x'; x.textContent='×'; x.setAttribute('aria-label','Eltávolítás');
     x.addEventListener('click',()=>{ disposeCache(it); if(selected===it) selected=null; items.splice(i,1); renderChips(); applyIcons(); });
-    chip.appendChild(col); chip.appendChild(x); box.appendChild(chip);
+    chip.appendChild(x); box.appendChild(chip);
   });
   $('cnt').textContent=items.length+'/'+MAX_ITEMS;
 }
@@ -1078,7 +1166,7 @@ async function addTextItem(){
   if(!t) return;
   if(items.length>=MAX_ITEMS){ status('Legfeljebb ' + MAX_ITEMS + ' ikon vagy szöveg lehet a kulcstartón.'); return; }
   await fontReady();
-  addItem({ kind:'text', text:t, color:'#f4f4f4' });
+  addItem({ kind:'text', text:t, color:defTextColor(), glyph:curStyle().glyph||'#ffffff' });
   $('txt').value='';
 }
 $('addTxt').addEventListener('click', addTextItem);
@@ -1100,7 +1188,7 @@ $('isz').addEventListener('change', ()=>{
 });
 buildGrid(); renderChips();
 fontReady().then(()=>{ // a betűtípus megérkezése után a szöveges ikonok újrarajzolása
-  const d=iconDef('dollar'); d.m=null;
+  const d=iconDef('dollar'); d.mc=null;
   items.forEach(it=>{ if(it.kind==='icon'&&it.key==='dollar'){ it.masks=null; disposeCache(it); } });
   buildGrid(); renderChips(); applyIcons();
 });
@@ -1186,8 +1274,50 @@ function buildPalette(){
     w.appendChild(inp); w.appendChild(sp); box.appendChild(w);
   });
 }
-$('palReset').addEventListener('click',()=>{ Object.assign(PAL,DEFAULT_PAL); buildPalette(); applyPalette(); });
+$('palReset').addEventListener('click',()=>{ Object.assign(PAL,curStyle().pal); buildPalette(); applyPalette(); });
+
+/* ---------- Stílusváltó ---------- */
+function renderStyleCards(){
+  const box=$('styleCards'); box.innerHTML='';
+  Object.keys(STYLES).forEach(k=>{
+    const st=STYLES[k], b=document.createElement('button');
+    b.className='card'+(k===styleKey?' on':''); b.disabled=!!st.soon;
+    b.setAttribute('aria-pressed', k===styleKey?'true':'false');
+    const name=document.createElement('strong'); name.textContent=st.name;
+    const sub=document.createElement('span'); sub.className='sub'; sub.textContent=st.sub;
+    b.appendChild(name); b.appendChild(sub);
+    if(st.soon){ const tag=document.createElement('span'); tag.className='tag'; tag.textContent='Hamarosan'; b.appendChild(tag); }
+    else{
+      const dots=document.createElement('span'); dots.className='dots';
+      ['base','road','building','park','water','rim'].forEach(n=>{ const i=document.createElement('i'); i.style.background=st.pal[n]; dots.appendChild(i); });
+      b.appendChild(dots);
+    }
+    b.addEventListener('click',()=>setStyle(k));
+    box.appendChild(b);
+  });
+}
+function setStyle(key){
+  const st=STYLES[key]; if(!st||st.soon||key===styleKey) return;
+  styleKey=key;
+  Object.assign(PAL,st.pal);
+  let removed=0;
+  for(let i=items.length-1;i>=0;i--){
+    const it=items[i];
+    if(it.kind==='icon'){ const ic=iconDef(it.key); if(ic.only && ic.only!==key){ disposeCache(it); items.splice(i,1); removed++; } }
+  }
+  items.forEach(it=>{
+    disposeCache(it);
+    if(it.kind!=='custom') it.masks=null;
+    if(it.kind==='icon'){ it.color=defIconColor(iconDef(it.key)); it.glyph=st.glyph||'#ffffff'; }
+    else if(it.kind==='text'){ it.color=defTextColor(); it.glyph=st.glyph||'#ffffff'; }
+  });
+  if(selected && items.indexOf(selected)<0) selected=null;
+  buildGrid(); renderChips(); buildPalette(); renderStyleCards();
+  if(current){ applyPalette(); items.forEach(it=>clampItem(it,current.R,stickerSize())); applyIcons(); }
+  status(removed ? 'Néhány ikon csak a másik stílusban érhető el, ezeket eltávolítottam.' : 'Stílus: '+st.name);
+}
 buildPalette();
+renderStyleCards();
 
 /* ---------- Betöltő és üzenetek ---------- */
 function setLoading(on,text){
