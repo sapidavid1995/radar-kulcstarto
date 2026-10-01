@@ -711,8 +711,8 @@ const STYLES = {
   vc:{ name:'GTA: Vice City', sub:'Rózsaszín keret, kék címkés ikonok', frame:'badge', outline:'#16233a', badge:'#59b4ee', glyph:'#ffffff',
        pal:{ base:'#b2b7bd', water:'#9ccbf2', park:'#2f9e5c', building:'#f6f6f6', road:'#141414', rim:'#d96fe3' } },
   gta4:{ name:'GTA IV', sub:'Sötét, visszafogott radar, zöld–kék keret', frame:'circle', outline:'#111111', badge:'#f4f4f4', glyph:'#111111',
-         textColor:'#7fc46a', rimSplit:true,
-         pal:{ base:'#59656b', water:'#7ea3bd', park:'#6c8f5e', building:'#9aa4a8', road:'#d9dddf', rim:'#5f9a50', rim2:'#3f93a6', tab:'#2b2f33' } }
+         textColor:'#86ad7e', rimSplit:true,
+         pal:{ base:'#4f5c5c', water:'#8fb2bf', park:'#668070', building:'#7f8b8b', road:'#b0bcbc', rim:'#5c7f5f', rim2:'#4a8f9b', tab:'#262b2d' } }
 };
 let styleKey='sa';
 function curStyle(){ return STYLES[styleKey]; }
@@ -1259,9 +1259,9 @@ function init3D(){
   camera=new THREE.PerspectiveCamera(35,1,0.1,3000); camera.up.set(0,0,1);
   controls=new THREE.OrbitControls(camera, renderer.domElement);
   controls.enableDamping=true;
-  scene3.add(new THREE.HemisphereLight(0xffffff,0x8a8f96,0.8));
-  const d1=new THREE.DirectionalLight(0xffffff,0.7); d1.position.set(30,-40,80); scene3.add(d1);
-  const d2=new THREE.DirectionalLight(0xffffff,0.25); d2.position.set(-40,30,30); scene3.add(d2);
+  scene3.add(new THREE.HemisphereLight(0xffffff,0x8a8f96,0.5));
+  const d1=new THREE.DirectionalLight(0xffffff,0.5); d1.position.set(30,-40,80); scene3.add(d1);
+  const d2=new THREE.DirectionalLight(0xffffff,0.18); d2.position.set(-40,30,30); scene3.add(d2);
   camera.position.set(0,-60,60);
   (function loop(){
     requestAnimationFrame(loop);
