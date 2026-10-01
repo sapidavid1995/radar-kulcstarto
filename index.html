@@ -8,8 +8,8 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik+Mono+One&display=swap">
 <style>
   :root{
-    --ink:#1b1d1f; --panel:#23262a; --line:#3a3f45; --text:#ecebe3; --dim:#a3a79f;
-    --water:#7ea6cf; --park:#86b26f; --road:#ecebe3; --accent:#f0b429;
+    --bg:#14161a; --panel:#1d2024; --panel2:#262a30; --line:#383d44;
+    --text:#eceae2; --dim:#a0a6ac; --accent:#f0b429; --accent-ink:#1b1d1f;
     box-sizing:border-box;
     padding-top:env(safe-area-inset-top,0px);
     padding-bottom:env(safe-area-inset-bottom,0px);
@@ -17,162 +17,254 @@
   *,*::before,*::after{box-sizing:inherit}
   html,body{height:100%;margin:0}
   body{
-    background:var(--ink);color:var(--text);
-    font:15px/1.4 "Trebuchet MS","Segoe UI",system-ui,sans-serif;
-    display:flex;flex-direction:column;height:100dvh;
+    background:var(--bg);color:var(--text);
+    font:15px/1.45 "Trebuchet MS","Segoe UI",system-ui,sans-serif;
+    height:100dvh;display:grid;
+    grid-template-columns:minmax(340px,410px) 1fr;
+    grid-template-rows:auto minmax(0,1fr);
   }
-  header{
-    display:flex;align-items:center;gap:12px;padding:10px 14px;
-    border-bottom:1px solid var(--line);background:var(--panel);
-  }
-  header h1{
-    margin:0;font:700 19px/1 "Arial Black","Impact",sans-serif;letter-spacing:.5px;
-    text-shadow:2px 2px 0 #000;
-  }
-  .tabs{margin-left:auto;display:flex;gap:6px}
-  .tab{
-    border:1px solid var(--line);background:transparent;color:var(--dim);
-    padding:7px 12px;border-radius:6px;font:inherit;cursor:pointer;
-  }
-  .tab.on{background:var(--accent);color:#1b1d1f;border-color:var(--accent);font-weight:700}
-  .tab:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  button,input,select{font:inherit;color:inherit}
+  button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
-  #stage{position:relative;flex:1;min-height:0;overflow:hidden;isolation:isolate}
+  /* ---- fejléc + lépéssor ---- */
+  header{
+    grid-column:1/-1;display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+    padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--line);
+  }
+  header h1{margin:0;font:700 18px/1 "Arial Black",Impact,sans-serif;text-shadow:2px 2px 0 #000;white-space:nowrap}
+  #stepper{display:flex;gap:6px;margin-left:auto}
+  .st{
+    display:flex;align-items:center;gap:8px;background:transparent;border:1px solid transparent;
+    border-radius:999px;padding:5px 12px 5px 6px;color:var(--dim);cursor:pointer;
+  }
+  .st b{
+    width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:13px;
+    background:var(--panel2);border:1px solid var(--line);
+  }
+  .st.done b{background:#3a5a2c;border-color:#5a8a35;color:#fff}
+  .st.on{background:var(--panel2);border-color:var(--line);color:var(--text)}
+  .st.on b{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+
+  /* ---- oldalsáv ---- */
+  #side{display:flex;flex-direction:column;min-height:0;background:var(--panel);border-right:1px solid var(--line)}
+  #steps{flex:1;overflow:auto;padding:16px 16px 8px}
+  .step{display:none}
+  .step.on{display:block}
+  h2{margin:0 0 6px;font-size:20px}
+  h3{margin:20px 0 8px;font-size:14px;color:var(--dim);font-weight:700}
+  .lead{margin:0 0 16px;color:var(--dim)}
+  .note{color:var(--dim);font-size:13px;margin:8px 0}
+  .field{margin:0 0 16px;display:grid;gap:6px}
+  .field > label{color:var(--dim);display:flex;justify-content:space-between;gap:8px}
+  .field > label strong{color:var(--text)}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  input[type=text],select{
+    width:100%;min-height:44px;background:var(--bg);border:1px solid var(--line);
+    padding:8px 12px;border-radius:8px;
+  }
+  .row input[type=text]{flex:1;width:auto;min-width:120px}
+  input[type=range]{width:100%;accent-color:var(--accent);min-height:32px}
+  .btn{
+    min-height:44px;padding:8px 14px;border-radius:8px;cursor:pointer;
+    background:var(--panel2);border:1px solid var(--line);
+  }
+  .btn:active{background:#32373e}
+  .btn.main{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
+  .btn.big{display:block;width:100%;margin-bottom:10px;min-height:52px;font-size:16px}
+  .btn:disabled{opacity:.45;cursor:default}
+  .check{display:flex;align-items:center;gap:10px;min-height:40px;cursor:pointer}
+  .check input{width:20px;height:20px;accent-color:var(--accent)}
+  details.trouble{margin-top:18px;border-top:1px solid var(--line);padding-top:12px;color:var(--dim)}
+  details.trouble summary{cursor:pointer}
+  .tips{margin:0;padding-left:18px;color:var(--dim);display:grid;gap:6px}
+
+  .palette{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+  .sw2{display:flex;align-items:center;gap:10px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer}
+  .sw2 input{width:32px;height:32px;padding:0;border:none;background:none;cursor:pointer}
+
+  #cnt{color:var(--accent);font-weight:400;font-size:15px;margin-left:6px}
+  .igrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(56px,1fr));gap:6px;margin-bottom:16px}
+  .ib{height:56px;display:flex;align-items:center;justify-content:center;background:var(--bg);
+    border:1px solid var(--line);border-radius:10px;cursor:pointer;padding:4px}
+  .ib:active{background:#2c3036}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 16px;min-height:4px}
+  .chip{display:flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--line);
+    border-radius:999px;padding:3px 6px 3px 10px}
+  .chip input[type=color]{width:28px;height:28px;padding:0;border:none;background:none;cursor:pointer}
+  .chip .x{background:none;border:none;color:var(--dim);font-size:22px;line-height:1;cursor:pointer;padding:0 6px}
+
+  #nav{display:flex;gap:10px;padding:12px 16px calc(12px);border-top:1px solid var(--line);background:var(--panel)}
+  #nav .btn{min-height:50px}
+  #next{flex:1}
+
+  /* ---- nézet ---- */
+  #stage{position:relative;min-height:0;overflow:hidden;isolation:isolate}
   .view{position:absolute;inset:0;display:none}
   .view.on{display:block}
   #map{position:absolute;inset:0;background:#cfd3c8}
   #lens{
     position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
     border-radius:50%;pointer-events:none;z-index:500;
-    box-shadow:0 0 0 100vmax rgba(20,22,24,.62), inset 0 0 0 3px rgba(240,180,41,.95);
+    box-shadow:0 0 0 100vmax rgba(20,22,24,.6), inset 0 0 0 3px rgba(240,180,41,.95);
   }
-  #lens::after{ /* kulcslyuk-fül jelölése */
+  #lens::after{
     content:"";position:absolute;left:50%;top:-9%;width:12%;height:12%;
     transform:translateX(-50%);border-radius:50%;
-    box-shadow:inset 0 0 0 3px rgba(240,180,41,.95);background:rgba(20,22,24,.62);
+    box-shadow:inset 0 0 0 3px rgba(240,180,41,.95);background:rgba(20,22,24,.6);
   }
-  #view3d canvas{display:block;width:100%;height:100%;touch-action:none}
-  #hint{
-    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-    text-align:center;color:var(--dim);padding:24px;pointer-events:none;
+  #lensInfo{
+    position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:600;
+    background:rgba(20,22,24,.85);color:var(--text);padding:6px 14px;border-radius:999px;font-size:14px;pointer-events:none;
   }
+  #view3d{background:radial-gradient(ellipse at 50% 38%,#f3f5f8 0%,#cdd4dc 62%,#aeb7c2 100%)}
+  #view3d canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+  .fab{
+    position:absolute;right:12px;top:12px;z-index:5;min-height:40px;padding:6px 14px;border-radius:999px;
+    background:rgba(255,255,255,.92);color:#222;border:1px solid rgba(0,0,0,.18);cursor:pointer;
+  }
+  #editHint{
+    position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:5;display:none;
+    background:rgba(20,22,24,.85);color:#fff;padding:7px 14px;border-radius:999px;font-size:14px;
+    text-align:center;max-width:92%;pointer-events:none;
+  }
+  #editHint.on{display:block}
 
-  #panel{
-    background:var(--panel);border-top:1px solid var(--line);
-    padding:10px 14px 12px;display:grid;gap:10px;
-    max-height:46dvh;overflow:auto;
+  #toast{
+    position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:900;display:none;
+    max-width:min(92%,640px);background:rgba(20,22,24,.94);color:#fff;border:1px solid var(--accent);
+    padding:10px 16px;border-radius:12px;font-size:14px;cursor:pointer;
   }
-  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-  .row > label{color:var(--dim)}
-  input[type=text]{
-    flex:1;min-width:140px;background:#15171a;border:1px solid var(--line);color:var(--text);
-    padding:9px 10px;border-radius:6px;font:inherit;
+  #toast.on{display:block}
+  #loading{
+    position:absolute;inset:0;z-index:950;display:none;align-items:center;justify-content:center;flex-direction:column;
+    gap:14px;background:rgba(20,22,26,.6);color:#fff;text-align:center;padding:20px;
   }
-  select{background:#15171a;border:1px solid var(--line);color:var(--text);padding:8px;border-radius:6px;font:inherit}
-  input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
-  button.act{
-    background:#15171a;color:var(--text);border:1px solid var(--line);
-    padding:9px 13px;border-radius:6px;font:inherit;cursor:pointer;
+  #loading.on{display:flex}
+  .spin{width:44px;height:44px;border-radius:50%;border:4px solid rgba(255,255,255,.25);border-top-color:var(--accent);animation:sp 0.9s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  /* ---- keskeny / álló kijelző: a nézet felül, a lépések alatta ---- */
+  @media (max-width:860px), (orientation:portrait){
+    body{grid-template-columns:1fr;grid-template-rows:auto minmax(220px,42dvh) minmax(0,1fr)}
+    #stage{grid-column:1;grid-row:2}
+    #side{grid-column:1;grid-row:3;border-right:none;border-top:1px solid var(--line)}
+    #stepper{margin-left:0;width:100%;justify-content:space-between}
   }
-  button.main{background:var(--accent);color:#1b1d1f;border-color:var(--accent);font-weight:700}
-  button:disabled{opacity:.45;cursor:default}
-  .chk{display:flex;gap:6px;align-items:center}
-  #info{color:var(--dim);font-size:13px}
-  #status{min-height:1.3em;font-size:13px;color:var(--accent)}
-  .legend{display:flex;gap:10px;align-items:center;font-size:12px;color:var(--dim);flex-wrap:wrap}
-  .sw{width:11px;height:11px;border-radius:2px;display:inline-block;margin-right:4px;vertical-align:-1px}
-  details{border:1px solid var(--line);border-radius:8px;padding:8px 10px}
-  details > summary{cursor:pointer;color:var(--text);font-weight:700}
-  details[open] > summary{margin-bottom:8px}
-  details > .row{margin-top:8px}
-  #cnt{color:var(--accent);font-weight:400;margin-left:6px}
-  .igrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(54px,1fr));gap:6px}
-  .ib{height:54px;display:flex;align-items:center;justify-content:center;background:#15171a;
-    border:1px solid var(--line);border-radius:8px;cursor:pointer;padding:4px}
-  .ib:active{background:#2c3036}
-  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;min-height:4px}
-  .chip{display:flex;align-items:center;gap:6px;background:#15171a;border:1px solid var(--line);
-    border-radius:999px;padding:3px 6px 3px 10px}
-  .chip input[type=color]{width:26px;height:26px;padding:0;border:none;background:none;cursor:pointer}
-  .chip .x{background:none;border:none;color:var(--dim);font-size:20px;line-height:1;cursor:pointer;padding:0 4px}
+  @media (max-width:560px){
+    .st span{display:none}
+    .st.on span{display:inline}
+  }
   @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
 <body>
 <header>
   <h1>Radar kulcstartó</h1>
-  <div class="tabs" role="tablist">
-    <button class="tab on" id="tabMap" role="tab">Térkép</button>
-    <button class="tab" id="tab3d" role="tab">3D nézet</button>
-  </div>
+  <nav id="stepper" aria-label="Lépések">
+    <button class="st on" data-go="1"><b>1</b><span>Terület</span></button>
+    <button class="st" data-go="2"><b>2</b><span>Megjelenés</span></button>
+    <button class="st" data-go="3"><b>3</b><span>Ikonok</span></button>
+    <button class="st" data-go="4"><b>4</b><span>Letöltés</span></button>
+  </nav>
 </header>
 
-<div id="stage">
+<aside id="side">
+  <div id="steps">
+
+    <section class="step on" data-step="1">
+      <h2>Terület kiválasztása</h2>
+      <p class="lead">Mozgasd és nagyítsd a térképet úgy, hogy a sárga kör pontosan azt a részt fogja át, amit a kulcstartón látni szeretnél.</p>
+      <div class="field">
+        <label for="q">Hely keresése</label>
+        <div class="row">
+          <input type="text" id="q" placeholder="pl. Budapest, Hősök tere">
+          <button class="btn" id="go">Keresés</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="dia">A kulcstartó átmérője <strong id="diaVal">40 mm</strong></label>
+        <input type="range" id="dia" min="25" max="70" step="1" value="40">
+      </div>
+      <div id="info" class="note"></div>
+      <details class="trouble">
+        <summary>Hibaelhárítás</summary>
+        <p class="note">Ha a modell generálása nem indul el, ezzel ellenőrizheted, hogy az adatszerverek elérhetők-e.</p>
+        <button class="btn" id="test">Kapcsolat teszt</button>
+      </details>
+    </section>
+
+    <section class="step" data-step="2">
+      <h2>Megjelenés</h2>
+      <p class="lead">A változtatások azonnal látszanak a 3D nézetben.</p>
+      <div class="field">
+        <label for="detail">Úthálózat részletessége</label>
+        <select id="detail">
+          <option value="3">Csak főutak</option>
+          <option value="2">Főutak + mellékutak</option>
+          <option value="1" selected>Utcákkal együtt</option>
+          <option value="0">Mindennel (ösvények is)</option>
+        </select>
+      </div>
+      <label class="check"><input type="checkbox" id="bld" checked> Épületek</label>
+      <label class="check"><input type="checkbox" id="tab" checked> Kulcslyuk-fül</label>
+      <h3>Színek</h3>
+      <div id="palette" class="palette"></div>
+      <button class="btn" id="palReset">Eredeti GTA színek</button>
+    </section>
+
+    <section class="step" data-step="3">
+      <h2>Ikonok és szöveg<span id="cnt">0/5</span></h2>
+      <p class="lead">Koppints egy ikonra a hozzáadáshoz (max. 5), majd húzd a helyére a 3D nézetben.</p>
+      <div id="iconGrid" class="igrid"></div>
+      <div class="field">
+        <label for="txt">Betűk (max. 2 karakter)</label>
+        <div class="row">
+          <input type="text" id="txt" maxlength="2" placeholder="pl. CJ">
+          <button class="btn" id="addTxt">Hozzáadás</button>
+        </div>
+      </div>
+      <button class="btn" id="upBtn">Saját kép feltöltése</button>
+      <input type="file" id="up" accept="image/*" hidden>
+      <div id="chips" class="chips"></div>
+      <div class="field">
+        <label for="isz">Ikonméret <strong id="iszVal">8 mm</strong></label>
+        <input type="range" id="isz" min="5" max="14" step="0.5" value="8">
+      </div>
+    </section>
+
+    <section class="step" data-step="4">
+      <h2>Letöltés és nyomtatás</h2>
+      <p class="lead" id="sum"></p>
+      <button class="btn main big" id="stl">STL letöltése</button>
+      <button class="btn big" id="stlLayers">Színenként külön STL</button>
+      <h3>Nyomtatási tippek</h3>
+      <ul class="tips">
+        <li>Fúvóka: 0,4 mm, rétegmagasság: 0,12–0,2 mm.</li>
+        <li>Többszínű nyomtatáshoz a színenkénti fájlokat töltsd be együtt, egy tárgyként (pl. Bambu Studióban), mert a helyzetük egyezik.</li>
+        <li>A kulcstartó teljes magassága kb. 4 mm.</li>
+      </ul>
+    </section>
+
+  </div>
+  <div id="nav">
+    <button class="btn" id="prev">← Vissza</button>
+    <button class="btn main" id="next">Modell generálása →</button>
+  </div>
+</aside>
+
+<section id="stage">
   <div class="view on" id="viewMap">
     <div id="map"></div>
     <div id="lens"></div>
+    <div id="lensInfo"></div>
   </div>
   <div class="view" id="view3d">
-    <div id="hint">Még nincs modell. A Térkép fülön válaszd ki a területet, majd nyomd meg a „Generálás” gombot.</div>
+    <button class="fab" id="top">Felülnézet</button>
+    <div id="editHint">Húzd az ikont a helyére · üres helyen húzva forgathatod a nézetet</div>
   </div>
-</div>
-
-<div id="panel">
-  <div class="row">
-    <input type="text" id="q" placeholder="Hely keresése (pl. Budapest, Hősök tere)" aria-label="Hely keresése">
-    <button class="act" id="go">Keresés</button>
-  </div>
-  <div class="row">
-    <label for="dia">Átmérő</label>
-    <input type="range" id="dia" min="25" max="70" step="1" value="40">
-    <strong id="diaVal">40 mm</strong>
-  </div>
-  <div class="row">
-    <label for="detail">Úthálózat</label>
-    <select id="detail">
-      <option value="3">Csak főutak</option>
-      <option value="2">Főutak + mellékutak</option>
-      <option value="1" selected>Utcákkal együtt</option>
-      <option value="0">Mindennel (ösvények is)</option>
-    </select>
-    <span class="chk"><input type="checkbox" id="bld" checked><label for="bld">Épületek</label></span>
-    <span class="chk"><input type="checkbox" id="tab" checked><label for="tab">Kulcslyuk-fül</label></span>
-  </div>
-  <details id="stk" open>
-    <summary>Ikonok és szöveg<span id="cnt">0/5</span></summary>
-    <div id="iconGrid" class="igrid"></div>
-    <div class="row">
-      <input type="text" id="txt" maxlength="2" placeholder="Betű (max. 2)" aria-label="Szöveg, legfeljebb 2 karakter" style="max-width:150px;flex:0 1 150px">
-      <button class="act" id="addTxt">Szöveg hozzáadása</button>
-      <button class="act" id="upBtn">Saját kép</button>
-      <input type="file" id="up" accept="image/*" hidden>
-    </div>
-    <div id="chips" class="chips"></div>
-    <div class="row">
-      <label for="isz">Ikonméret</label>
-      <input type="range" id="isz" min="5" max="14" step="0.5" value="8">
-      <strong id="iszVal">8 mm</strong>
-    </div>
-    <div id="info2" style="color:var(--dim);font-size:13px;margin-top:8px">Az ikonok a Generálás után a 3D nézetben az „Ikonok mozgatása” gombbal húzhatók a helyükre.</div>
-  </details>
-  <div id="info"></div>
-  <div class="row">
-    <button class="act main" id="gen">Generálás</button>
-    <button class="act" id="top" disabled>Felülnézet</button>
-    <button class="act" id="edit" disabled>Ikonok mozgatása</button>
-    <button class="act" id="stl" disabled>STL letöltés</button>
-    <button class="act" id="stlLayers" disabled>Színenként külön STL</button>
-    <button class="act" id="test">Kapcsolat teszt</button>
-  </div>
-  <div id="status" role="status"></div>
-  <div class="legend">
-    <span><i class="sw" style="background:#cdcdcd;outline:1px solid #555"></i>alap</span>
-    <span><i class="sw" style="background:#6f9ac9;outline:1px solid #555"></i>víz</span>
-    <span><i class="sw" style="background:#5a8a35;outline:1px solid #555"></i>park</span>
-    <span><i class="sw" style="background:#f4f4f4;outline:1px solid #555"></i>épület</span>
-    <span><i class="sw" style="background:#262626;outline:1px solid #555"></i>út</span>
-  </div>
-</div>
+  <div id="toast" role="status"></div>
+  <div id="loading"><div class="spin"></div><div id="loadTxt"></div></div>
+</section>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
@@ -180,12 +272,13 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/STLExporter.js"></script>
 <script>
+
 (function(){
 'use strict';
 const $ = id => document.getElementById(id);
 
 /* ---------- Beállítások: színek és magasságok (mm) ---------- */
-const PAL = { base:'#cdcdcd', water:'#6f9ac9', park:'#5a8a35', building:'#f4f4f4', road:'#262626', rim:'#111111' };
+const PAL = { base:'#8f959b', water:'#6f9ac9', park:'#5a8a35', building:'#f5f5f5', road:'#262626', rim:'#111111' };
 const BASE_T = 2.0;                                   // alaplap vastagsága
 const TOPS   = { water:2.4, park:2.4, road:2.8, building:3.0 };  // rétegek felső síkja
 const RIM_TOP = 3.4, RIM_W = 1.0;                     // keret magassága, szélessége
@@ -229,6 +322,7 @@ function terrainRadius(){
 function updateInfo(){
   const R = terrainRadius(), D = +$('dia').value;
   $('diaVal').textContent = D + ' mm';
+  $('lensInfo').textContent = 'A kör a terepen kb. ' + Math.round(R*2) + ' m';
   $('info').textContent = 'A kör a terepen kb. ' + Math.round(R*2) + ' m átmérőjű, 1 mm ≈ ' + (R*2/D).toFixed(1) + ' m.';
 }
 map.on('move zoom moveend zoomend resize', updateInfo);
@@ -250,19 +344,13 @@ async function search(){
 $('go').addEventListener('click', search);
 $('q').addEventListener('keydown', e => { if(e.key==='Enter') search(); });
 
-function status(t){ $('status').textContent = t; }
-
-/* ---------- Fülek ---------- */
-function showTab(which){
-  const is3d = which === '3d';
-  $('viewMap').classList.toggle('on', !is3d);
-  $('view3d').classList.toggle('on', is3d);
-  $('tabMap').classList.toggle('on', !is3d);
-  $('tab3d').classList.toggle('on', is3d);
-  if(is3d){ init3D(); resize3D(); } else { map.invalidateSize(); layoutLens(); }
+let toastT=null;
+function status(t,sticky){
+  const el=$('toast'); clearTimeout(toastT);
+  if(!t){ el.classList.remove('on'); return; }
+  el.textContent=t; el.classList.add('on');
+  if(!sticky) toastT=setTimeout(()=>el.classList.remove('on'),6000);
 }
-$('tabMap').addEventListener('click', ()=>showTab('map'));
-$('tab3d').addEventListener('click', ()=>showTab('3d'));
 
 /* ---------- Overpass letöltés ---------- */
 const ENDPOINTS = [
@@ -458,6 +546,7 @@ function buildModel(osm, P){
         addRoad('water', simplify(proj(el.geometry), 0.25), (t.waterway==='stream'?0.9:1.8)*f);
       } else {
         const layer = polyLayer(t); if(!layer) continue;
+        if(layer==='building' && !P.buildings) continue;
         if(!closed(el.geometry)) continue;
         let pts = proj(el.geometry); pts.pop();
         pts = simplify(pts, 0.12);
@@ -770,8 +859,8 @@ function addItem(def){
   if(items.length>=MAX_ITEMS){ status('Legfeljebb ' + MAX_ITEMS + ' ikon vagy szöveg lehet a kulcstartón.'); return; }
   const it=Object.assign({ id:++uid, nx:0, ny:0 }, def);
   items.push(it); placeItem(it); selected=it; renderChips(); applyIcons();
-  if(!current) status('Az ikonok a Generálás után jelennek meg a 3D nézetben.');
-  else if(!editMode) status('Az ikon a közepén van. Nyomd meg az „Ikonok mozgatása” gombot, és húzd a helyére.');
+  if(!current) status('Az ikon a modell elkészülte után jelenik meg.');
+  else status('Húzd az ikont a helyére a 3D nézetben.');
 }
 
 /* --- ikonok mozgatása a 3D nézetben (felülnézet, húzással) --- */
@@ -793,6 +882,7 @@ function onDown(e){
     if(d<=rad+1.5 && d<bd){ bd=d; best=it; bx=q[0]-p.x; by=q[1]-p.y; }
   });
   selected=best; drag=best?{ it:best, dx:bx, dy:by }:null;
+  if(best && controls) controls.enabled=false;
   if(best){ try{ renderer.domElement.setPointerCapture(e.pointerId); }catch(_){} }
   updateRing();
 }
@@ -804,7 +894,7 @@ function onMove(e){
   clampItem(drag.it,R,stickerSize());
   if(!rafPending){ rafPending=true; requestAnimationFrame(()=>{ rafPending=false; applyIcons(); }); }
 }
-function onUp(e){ drag=null; try{ renderer.domElement.releasePointerCapture(e.pointerId); }catch(_){} }
+function onUp(e){ drag=null; if(controls) controls.enabled=true; try{ renderer.domElement.releasePointerCapture(e.pointerId); }catch(_){} }
 function attachEdit(){
   const el=renderer.domElement;
   el.addEventListener('pointerdown',onDown); el.addEventListener('pointermove',onMove);
@@ -820,23 +910,13 @@ function updateRing(){
   const m=getMasks(selected), q=itemPos(selected,current.R), r=itemRadius(m,stickerSize())+0.6;
   selRing.position.set(q[0],q[1],ICON_FILL_TOP+0.3); selRing.scale.set(r,r,1); selRing.visible=true;
 }
-function resetEdit(){
-  editMode=false; selected=null; drag=null;
-  $('edit').classList.remove('main'); $('edit').textContent='Ikonok mozgatása';
+function setEdit(on){
+  editMode=on;
+  if(!on) drag=null;
+  if(on && !selected && items.length) selected=items[items.length-1];
   if(typeof controls!=='undefined' && controls) controls.enabled=true;
   updateRing();
 }
-$('edit').addEventListener('click',()=>{
-  if(!current) return;
-  if(!editMode && !items.length){ status('Előbb adj hozzá ikont vagy szöveget.'); return; }
-  editMode=!editMode;
-  $('edit').classList.toggle('main',editMode);
-  $('edit').textContent=editMode?'Mozgatás kész':'Ikonok mozgatása';
-  controls.enabled=!editMode;
-  if(editMode){ setCamera(true); status('Húzd az ikont a kívánt helyre. A „Mozgatás kész” gombbal visszatérsz a forgatáshoz.'); }
-  else { selected=null; status(''); }
-  updateRing();
-});
 
 /* --- 3D hálók --- */
 function shapesToGeoms(shapes,w,h,k,cx,cy,z0,z1){
@@ -952,73 +1032,171 @@ fontReady().then(()=>{ // a betűtípus megérkezése után a szöveges ikonok �
 
 
 /* ---------- 3D nézet ---------- */
-let renderer, scene3, camera, controls, current=null;
+let renderer, scene3, camera, controls, current=null, shadowMesh=null;
+let topView=false;
 function init3D(){
   if(renderer) return;
-  const el = $('view3d');
-  renderer = new THREE.WebGLRenderer({ antialias:true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+  const el=$('view3d');
+  renderer=new THREE.WebGLRenderer({ antialias:true, alpha:true });
+  renderer.setClearColor(0x000000,0);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
   el.insertBefore(renderer.domElement, el.firstChild);
-  attachEdit();
-  scene3 = new THREE.Scene(); scene3.background = new THREE.Color(0x15171a);
-  camera = new THREE.PerspectiveCamera(35, 1, 0.1, 3000); camera.up.set(0,0,1);
-  controls = new THREE.OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
-  scene3.add(new THREE.AmbientLight(0xffffff, 0.65));
-  const d1 = new THREE.DirectionalLight(0xffffff, 0.85); d1.position.set(30,-40,80); scene3.add(d1);
-  const d2 = new THREE.DirectionalLight(0xffffff, 0.3); d2.position.set(-40,30,30); scene3.add(d2);
+  attachEdit(); // az OrbitControls előtt, hogy az ikon-húzás elsőbbséget kapjon
+  scene3=new THREE.Scene();
+  camera=new THREE.PerspectiveCamera(35,1,0.1,3000); camera.up.set(0,0,1);
+  controls=new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping=true;
+  scene3.add(new THREE.HemisphereLight(0xffffff,0x8a8f96,0.8));
+  const d1=new THREE.DirectionalLight(0xffffff,0.7); d1.position.set(30,-40,80); scene3.add(d1);
+  const d2=new THREE.DirectionalLight(0xffffff,0.25); d2.position.set(-40,30,30); scene3.add(d2);
   camera.position.set(0,-60,60);
   (function loop(){
     requestAnimationFrame(loop);
-    if(!$('view3d').classList.contains('on')) return;
-    controls.update(); renderer.render(scene3, camera);
+    if(!el.classList.contains('on')) return;
+    controls.update(); renderer.render(scene3,camera);
   })();
+  if(window.ResizeObserver) new ResizeObserver(resize3D).observe(el);
 }
 function resize3D(){
-  const el = $('view3d'), w = el.clientWidth, h = el.clientHeight;
+  const el=$('view3d'), w=el.clientWidth, h=el.clientHeight;
   if(!w||!h||!renderer) return;
-  renderer.setSize(w,h); camera.aspect = w/h; camera.updateProjectionMatrix();
+  renderer.setSize(w,h); camera.aspect=w/h; camera.updateProjectionMatrix();
 }
 function setCamera(top){
-  if(!current) return;
-  const R = current.R;
+  if(!current||!camera) return;
+  const R=current.R;
   controls.target.set(0, current.tab? R*0.12 : 0, BASE_T);
   if(top) camera.position.set(0, -R*0.02, R*3.6);
   else camera.position.set(0, -R*1.7, R*1.9);
   controls.update();
 }
-function show3D(res){
-  init3D();
-  if(current){
-    scene3.remove(current.group);
-    current.group.traverse(o=>{ if(o.geometry) o.geometry.dispose(); if(o.material) o.material.dispose(); });
-  }
-  current = res; scene3.add(res.group); applyIcons();
-  $('hint').style.display = 'none';
-  ['top','edit','stl','stlLayers'].forEach(id=>$(id).disabled=false);
-  showTab('3d'); setCamera(false); resetEdit();
+function makeShadow(R){
+  const c=document.createElement('canvas'); c.width=c.height=128;
+  const x=c.getContext('2d'), g=x.createRadialGradient(64,64,34,64,64,64);
+  g.addColorStop(0,'rgba(0,0,0,0.38)'); g.addColorStop(1,'rgba(0,0,0,0)');
+  x.fillStyle=g; x.fillRect(0,0,128,128);
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(1,1), new THREE.MeshBasicMaterial({ map:new THREE.CanvasTexture(c), transparent:true, depthWrite:false }));
+  m.scale.set(R*3,R*3,1); m.position.z=-0.05; m.name='shadow';
+  return m;
 }
-$('top').addEventListener('click', ()=>setCamera(true));
+function disposeGroup(g){ g.traverse(o=>{ if(o.geometry) o.geometry.dispose(); if(o.material) o.material.dispose(); }); }
+function applyPalette(){
+  if(!current) return;
+  current.group.children.forEach(m=>{ if(PAL[m.name] && m.material) m.material.color.set(PAL[m.name]); });
+}
+function setModel(res, keepCamera){
+  init3D();
+  if(current){ scene3.remove(current.group); disposeGroup(current.group); }
+  if(shadowMesh){ scene3.remove(shadowMesh); shadowMesh.geometry.dispose(); shadowMesh.material.map.dispose(); shadowMesh.material.dispose(); }
+  current=res; scene3.add(res.group);
+  shadowMesh=makeShadow(res.R); scene3.add(shadowMesh);
+  const size=stickerSize();
+  items.forEach(it=>clampItem(it,res.R,size));
+  applyIcons();
+  if(!keepCamera) setCamera(topView);
+}
 
-/* ---------- Generálás ---------- */
-$('gen').addEventListener('click', async ()=>{
-  const c = map.getCenter(), R = terrainRadius(), D = +$('dia').value;
-  if(R > 3000){ status('Túl nagy terület (max. kb. 3 km sugár). Nagyíts rá a térképen.'); return; }
-  const btn = $('gen'); btn.disabled = true;
+/* ---------- Színek ---------- */
+const DEFAULT_PAL=Object.assign({},PAL);
+const PAL_LABELS={ base:'Alap (beton)', road:'Utak', building:'Épületek', park:'Parkok', water:'Víz', rim:'Keret' };
+function buildPalette(){
+  const box=$('palette'); box.innerHTML='';
+  Object.keys(PAL_LABELS).forEach(k=>{
+    const w=document.createElement('label'); w.className='sw2';
+    const inp=document.createElement('input'); inp.type='color'; inp.value=PAL[k];
+    inp.addEventListener('input',()=>{ PAL[k]=inp.value; applyPalette(); });
+    const sp=document.createElement('span'); sp.textContent=PAL_LABELS[k];
+    w.appendChild(inp); w.appendChild(sp); box.appendChild(w);
+  });
+}
+$('palReset').addEventListener('click',()=>{ Object.assign(PAL,DEFAULT_PAL); buildPalette(); applyPalette(); });
+buildPalette();
+
+/* ---------- Betöltő és üzenetek ---------- */
+function setLoading(on,text){
+  $('loading').classList.toggle('on',!!on);
+  if(text!==undefined) $('loadTxt').textContent=text;
+}
+$('toast').addEventListener('click',()=>status(''));
+
+/* ---------- Lépések és generálás ---------- */
+let step=1, osmCache=null, fetchKey='', genP=null, builtKey='', builtD=40, genBusy=false;
+const NEXT_LABEL={ 1:'Modell generálása →', 2:'Tovább: ikonok →', 3:'Tovább: letöltés →', 4:'↺ Új terület' };
+
+function buildFromCache(D, keepCamera){
+  const res=buildModel(osmCache,{ lat0:genP.lat0, lon0:genP.lon0, R:genP.R, D:D,
+    detail:+$('detail').value, tab:$('tab').checked, buildings:$('bld').checked });
+  setModel(res,keepCamera);
+}
+async function ensureModel(){
+  const c=map.getCenter(), R=terrainRadius(), D=+$('dia').value;
+  const fk=c.lat.toFixed(5)+','+c.lng.toFixed(5)+','+R.toFixed(1), bk=fk+','+D;
+  if(current && builtKey===bk) return true;
+  if(R>3000){ status('Túl nagy terület (max. kb. 3 km sugár). Nagyíts rá a térképen.',true); return false; }
+  genBusy=true; setLoading(true,'Adatok letöltése az OpenStreetMapről…'); status('');
   try{
-    status('Adatok letöltése az OpenStreetMapről…');
-    const osm = await fetchOSM(c.lat, c.lng, R, $('bld').checked, status);
-    status('Modell építése…');
+    if(!osmCache || fetchKey!==fk){
+      osmCache=await fetchOSM(c.lat,c.lng,R,true,t=>setLoading(true,t));
+      fetchKey=fk; genP={ lat0:c.lat, lon0:c.lng, R:R };
+    }
+    setLoading(true,'Modell építése…');
     await new Promise(r=>setTimeout(r,30));
-    const res = buildModel(osm, { lat0:c.lat, lon0:c.lng, R, D,
-      detail:+$('detail').value, tab:$('tab').checked });
-    show3D(res);
-    status('Kész: ' + res.tris.toLocaleString('hu-HU') + ' háromszög, ' + D + ' mm átmérő.');
+    builtD=D; buildFromCache(D,false); builtKey=bk;
+    return true;
   }catch(e){
-    status('Hiba: ' + (e.message||e));
-  }finally{ btn.disabled = false; }
+    status('Hiba: '+(e.message||e),true); return false;
+  }finally{ genBusy=false; setLoading(false); }
+}
+function updateSummary(){
+  if(!current) return;
+  const n=items.length;
+  $('sum').textContent='Átmérő: '+Math.round(current.R*2)+' mm · '+n+' ikon/szöveg · '+current.tris.toLocaleString('hu-HU')+' háromszög (térkép).';
+}
+function setStep(n){
+  step=n;
+  document.querySelectorAll('.step').forEach(e=>e.classList.toggle('on',+e.dataset.step===n));
+  document.querySelectorAll('.st').forEach(b=>{ const i=+b.dataset.go; b.classList.toggle('on',i===n); b.classList.toggle('done',i<n); });
+  $('viewMap').classList.toggle('on',n===1);
+  $('view3d').classList.toggle('on',n!==1);
+  if(n===1){ map.invalidateSize(); layoutLens(); }
+  else{
+    init3D(); resize3D();
+    topView=(n===3); setCamera(topView);
+    $('top').textContent=topView?'Perspektíva':'Felülnézet';
+  }
+  setEdit(n===3);
+  $('editHint').classList.toggle('on',n===3);
+  $('prev').style.visibility=(n===1)?'hidden':'visible';
+  $('next').textContent=NEXT_LABEL[n];
+  $('steps').scrollTop=0;
+  updateSummary();
+}
+async function goStep(n){
+  if(genBusy) return;
+  n=Math.max(1,Math.min(4,n));
+  if(n>=2){ const ok=await ensureModel(); if(!ok) return; }
+  setStep(n);
+}
+$('next').addEventListener('click',()=>{ if(step===4) setStep(1); else goStep(step+1); });
+$('prev').addEventListener('click',()=>goStep(step-1));
+document.querySelectorAll('.st').forEach(b=>b.addEventListener('click',()=>goStep(+b.dataset.go)));
+$('top').addEventListener('click',()=>{
+  topView=!topView; setCamera(topView); $('top').textContent=topView?'Perspektíva':'Felülnézet';
 });
 
+/* megjelenés-beállítások: újraépítés a letöltött adatokból (nincs új letöltés) */
+let rbT=null;
+function scheduleRebuild(){
+  if(!current||!osmCache) return;
+  clearTimeout(rbT);
+  rbT=setTimeout(async ()=>{
+    setLoading(true,'Frissítés…');
+    await new Promise(r=>setTimeout(r,20));
+    try{ buildFromCache(builtD,true); }catch(e){ status('Hiba: '+(e.message||e),true); }
+    setLoading(false);
+  },250);
+}
+['detail','bld','tab'].forEach(id=>$(id).addEventListener('change',scheduleRebuild));
 
 /* ---------- Kapcsolat teszt ---------- */
 $('test').addEventListener('click', async ()=>{
@@ -1033,7 +1211,7 @@ $('test').addEventListener('click', async ()=>{
       return host + ': ' + ((e && e.name==='AbortError') ? 'időtúllépés' : 'Failed to fetch');
     }finally{ clearTimeout(to); }
   }));
-  status(res.join(' | '));
+  status(res.join(' | '), true);
 });
 
 /* ---------- STL export ---------- */
@@ -1057,7 +1235,9 @@ $('stlLayers').addEventListener('click', ()=>{
     setTimeout(()=>download('radar-kulcstarto-' + m.name + '.stl', ex.parse(m, { binary:true })), i*350);
   });
 });
+setStep(1);
 })();
+
 </script>
 </body>
 </html>
