@@ -251,7 +251,7 @@
     <section class="step" data-step="4">
       <h2>Letöltés és nyomtatás</h2>
       <p class="lead" id="sum"></p>
-      <button class="btn main big" id="mf">3MF letöltése (egy fájl, többszínű)</button>
+      <button class="btn main big" id="mf">3MF letöltése (egy fájl, színenként külön rész)</button>
       <div class="note" id="filNote"></div>
       <div id="filaments" class="fils"></div>
       <h3>Más formátumok</h3>
@@ -260,8 +260,9 @@
       <h3>Nyomtatási tippek</h3>
       <ul class="tips">
         <li>Fúvóka: 0,4 mm, rétegmagasság: 0,12–0,2 mm.</li>
-        <li>A 3MF-et Bambu Studióban vagy OrcaSlicerben nyisd meg: a részek már a filament-szlotokhoz vannak rendelve (lásd a fenti sorszámokat). Állítsd be a szlotok színét a listának megfelelően.</li>
-        <li>Ha a szeletelő nem ismeri fel a színeket, használd a „Színenként külön STL”-t, és töltsd be együtt, egy tárgyként.</li>
+        <li>Bambu Studióban a „csak geometria” figyelmeztetésre kattints az OK-ra (ez normális: a program csak a saját projektfájljaiból tölti be a beállításokat). Ha a részek külön tárgyként jönnek be, jelöld ki mindet, és jobb klikk → Assemble (összeszerelés).</li>
+        <li>Ezután az objektumlistában minden részhez rendeld a megfelelő filamentet a fenti lista szerint (a rész neve tartalmazza a színt).</li>
+        <li>Ha a 3MF nem megfelelően jön be, használd a „Színenként külön STL”-t: töltsd be egyszerre mindet, és a program felajánlja, hogy egy többrészes tárgyként nyissa meg.</li>
         <li>A kulcstartó teljes magassága kb. 4–4,3 mm.</li>
       </ul>
     </section>
@@ -1491,7 +1492,7 @@ $('test').addEventListener('click', async ()=>{
   status(res.join(' | '), true);
 });
 
-/* ---------- 3MF export: egy fájl, részenként színhez rendelt filament-szlottal (Bambu Studio / OrcaSlicer) ---------- */
+/* ---------- 3MF export: egy fájl, színenként külön résszel (általános 3MF, a filamentet a szeletelőben kell hozzárendelni) ---------- */
 function meshRank(n){
   if(n==='base') return 0; if(n==='water') return 1; if(n==='park') return 2; if(n==='building') return 3; if(n==='road') return 4;
   if(n==='rim'||n==='rim2'||n==='tab') return 5; if(n==='iconOutline') return 6;
@@ -1555,10 +1556,10 @@ function renderFilaments(){
   gs.forEach(g=>{
     const row=document.createElement('div'); row.className='fil';
     const sw=document.createElement('i'); sw.style.background=g.hex;
-    const tx=document.createElement('span'); tx.textContent=g.ext+'. szlot · '+g.hex+' · '+g.labels.join(', ');
+    const tx=document.createElement('span'); tx.textContent=g.ext+'. szín · '+g.hex+' · '+g.labels.join(', ');
     row.appendChild(sw); row.appendChild(tx); box.appendChild(row);
   });
-  $('filNote').textContent=gs.length+' különböző szín.'+(gs.length>4?' Az AMS 4 színt tárol, ennél több színnél a szeletelő több AMS-t vagy kézi filamentcserét kér.':'');
+  $('filNote').textContent=gs.length+' különböző szín, a 3MF-ben mindegyik külön rész. A szeletelőben rendeld hozzá a megfelelő filamentet.'+(gs.length>4?' Az AMS 4 színt tárol, ennél több színnél a szeletelő több AMS-t vagy kézi filamentcserét kér.':'');
 }
 async function export3MF(){
   if(!current) return;
@@ -1568,55 +1569,34 @@ async function export3MF(){
   try{
     current.group.updateMatrixWorld(true);
     const gs=exportGroups(), n=gs.length, asm=n+1, matId=n+2;
-    const objs=[], bases=[], comps=[], parts=[];
+    const objs=[], bases=[], comps=[];
     gs.forEach((g,i)=>{
       const id=i+1, name='Szín '+g.ext+' ('+g.hex+'): '+g.labels.join(', ');
-      objs.push('<object id="'+id+'" type="model" pid="'+matId+'" pindex="'+i+'">'+meshToXml(g)+'</object>');
+      objs.push('<object id="'+id+'" type="model" name="'+xmlEsc(name)+'" pid="'+matId+'" pindex="'+i+'">'+meshToXml(g)+'</object>');
       bases.push('<base name="'+xmlEsc('Szín '+g.ext)+'" displaycolor="'+g.hex.toUpperCase()+'FF"/>');
       comps.push('<component objectid="'+id+'"/>');
-      parts.push('<part id="'+id+'" subtype="normal_part"><metadata key="name" value="'+xmlEsc(name)+'"/>'
-        +'<metadata key="matrix" value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"/>'
-        +'<metadata key="extruder" value="'+g.ext+'"/></part>');
     });
     const model='<?xml version="1.0" encoding="UTF-8"?>\n'
-      +'<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:BambuStudio="http://schemas.bambulab.com/package/2021">\n'
-      +' <metadata name="Application">BambuStudio-01.08.00.00</metadata>\n'
-      +' <metadata name="BambuStudio:3mfVersion">1</metadata>\n'
+      +'<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">\n'
       +' <metadata name="Title">Radar kulcstarto</metadata>\n'
+      +' <metadata name="Application">Radar kulcstarto generator</metadata>\n'
       +' <resources>\n'
       +'  <basematerials id="'+matId+'">'+bases.join('')+'</basematerials>\n'
       +'  '+objs.join('\n  ')+'\n'
-      +'  <object id="'+asm+'" type="model"><components>'+comps.join('')+'</components></object>\n'
+      +'  <object id="'+asm+'" type="model" name="Radar kulcstarto"><components>'+comps.join('')+'</components></object>\n'
       +' </resources>\n'
       +' <build><item objectid="'+asm+'" transform="1 0 0 0 1 0 0 0 1 90 90 0" printable="1"/></build>\n'
       +'</model>\n';
-    const settings='<?xml version="1.0" encoding="UTF-8"?>\n<config>\n'
-      +'  <object id="'+asm+'">\n'
-      +'    <metadata key="name" value="Radar kulcstarto"/>\n'
-      +'    <metadata key="extruder" value="1"/>\n'
-      +'    '+parts.join('\n    ')+'\n'
-      +'  </object>\n'
-      +'  <plate>\n'
-      +'    <metadata key="plater_id" value="1"/>\n'
-      +'    <metadata key="plater_name" value=""/>\n'
-      +'    <metadata key="locked" value="false"/>\n'
-      +'    <model_instance>\n'
-      +'      <metadata key="object_id" value="'+asm+'"/>\n'
-      +'      <metadata key="instance_id" value="0"/>\n'
-      +'    </model_instance>\n'
-      +'  </plate>\n</config>\n';
     const zip=new JSZip();
     zip.file('[Content_Types].xml','<?xml version="1.0" encoding="UTF-8"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">\n'
       +' <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>\n'
-      +' <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>\n'
-      +' <Default Extension="config" ContentType="text/xml"/>\n</Types>\n');
+      +' <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>\n</Types>\n');
     zip.file('_rels/.rels','<?xml version="1.0" encoding="UTF-8"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n'
       +' <Relationship Target="/3D/3dmodel.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>\n</Relationships>\n');
     zip.file('3D/3dmodel.model',model);
-    zip.file('Metadata/model_settings.config',settings);
     const blob=await zip.generateAsync({ type:'blob', compression:'DEFLATE', compressionOptions:{ level:6 } });
     download('radar-kulcstarto.3mf', blob);
-    status('3MF kész: '+n+' szín. Bambu Studióban vagy OrcaSlicerben nyisd meg.');
+    status('3MF kész: '+n+' rész (szín). Nyisd meg a szeletelőben, és rendeld a részekhez a filamenteket.');
   }catch(e){
     status('A 3MF készítése nem sikerült: '+(e.message||e),true);
   }finally{ setLoading(false); }
