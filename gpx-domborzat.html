@@ -1,0 +1,872 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GPX Domborzat – prototípus</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
+</script>
+<style>
+:root{--bg:#f4f1ea;--panel:#fffdf8;--ink:#1f2a24;--muted:#5d6b62;--line:#ddd6c8;--accent:#e4572e;--green:#2f5d46;--soft:#eef3ee}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;font-family:Manrope,system-ui,sans-serif;background:var(--bg);color:var(--ink);display:flex;flex-direction:column}
+header{display:flex;align-items:center;gap:24px;padding:12px 20px;border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap}
+.brand{font-weight:800;font-size:18px;letter-spacing:-.02em;white-space:nowrap}
+.brand span{color:var(--accent)}
+.brand small{font-weight:600;color:var(--muted);font-size:12px;margin-left:6px}
+nav.steps{display:flex;gap:6px;flex-wrap:wrap}
+nav.steps button{border:1px solid var(--line);background:transparent;padding:6px 12px;border-radius:999px;font:inherit;font-size:13px;color:var(--muted);cursor:pointer}
+nav.steps button.active{background:var(--green);color:#fff;border-color:var(--green)}
+nav.steps button:disabled{opacity:.4;cursor:not-allowed}
+.layout{flex:1;display:grid;grid-template-columns:370px 1fr;min-height:0}
+aside{background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;padding:18px 20px 28px}
+.view{position:relative;min-height:0}
+#map,#three{position:absolute;inset:0}
+#three{display:none}
+.step{display:none}.step.active{display:block}
+h2{font-size:20px;margin:0 0 4px;letter-spacing:-.02em}
+.lead{color:var(--muted);font-size:14px;margin:0 0 14px;line-height:1.5}
+label.field{display:block;font-size:13px;font-weight:600;margin:14px 0 6px}
+.row{display:flex;align-items:center;gap:10px}
+input[type=range]{flex:1;accent-color:var(--green)}
+.val{min-width:58px;text-align:right;font-variant-numeric:tabular-nums;font-size:13px;color:var(--muted)}
+input[type=text]{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff}
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{flex:1;padding:8px 6px;border:0;background:#fff;font:inherit;font-size:13px;cursor:pointer;color:var(--ink)}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button.on{background:var(--soft);color:var(--green);font-weight:700}
+.btn{display:flex;justify-content:center;align-items:center;gap:8px;width:100%;padding:11px 14px;border-radius:10px;border:0;background:var(--green);color:#fff;font:inherit;font-weight:700;cursor:pointer;margin-top:16px}
+.btn.secondary{background:#fff;color:var(--green);border:1px solid var(--green)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.drop{display:block;border:2px dashed var(--line);border-radius:12px;padding:22px;text-align:center;color:var(--muted);cursor:pointer;font-size:14px;line-height:1.5}
+.drop b{color:var(--ink)}
+.drop.over{border-color:var(--green);background:var(--soft)}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+.stat{background:var(--soft);border-radius:10px;padding:10px;min-width:0}
+.stat b{display:block;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stat small{color:var(--muted);font-size:12px}
+fieldset{border:1px solid var(--line);border-radius:12px;padding:4px 12px 14px;margin:14px 0}
+legend{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);padding:0 6px}
+.check{display:flex;align-items:center;gap:8px;font-size:13px;margin-top:10px;cursor:pointer}
+.hint{font-size:12px;color:var(--muted);line-height:1.45;margin:8px 0 0}
+.hint:empty{display:none}
+.parts .part{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.part small{display:block;color:var(--muted);font-size:12px}
+.swatches{display:flex;gap:4px}
+input[type=color]{width:26px;height:26px;border:1px solid var(--line);border-radius:6px;padding:0;background:none;cursor:pointer}
+.card{border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:12px}
+.card h3{margin:0 0 2px;font-size:15px}
+.swaps{font-size:13px;margin:6px 0 0;padding-left:20px;line-height:1.8}
+.dot{display:inline-block;width:11px;height:11px;border-radius:3px;vertical-align:-1px;border:1px solid rgba(0,0,0,.15)}
+.status{position:absolute;left:16px;bottom:16px;background:rgba(31,42,36,.93);color:#fff;padding:9px 13px;border-radius:10px;font-size:13px;max-width:70%;display:none;z-index:1000}
+.status.show{display:block}.status.err{background:#9b2c1f}
+.overlayhint{position:absolute;right:16px;top:16px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:7px 11px;font-size:12px;color:var(--muted);z-index:900;pointer-events:none}
+footer{font-size:11px;color:var(--muted);padding:6px 20px;border-top:1px solid var(--line);background:var(--panel)}
+@media(max-width:860px){
+  .layout{grid-template-columns:1fr;grid-template-rows:auto 65vh}
+  aside{border-right:0;border-bottom:1px solid var(--line)}
+  .view{grid-row:2}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">GPX<span>·</span>Domborzat<small>prototípus</small></div>
+  <nav class="steps" id="steps">
+    <button data-step="1" class="active">1. Útvonal</button>
+    <button data-step="2" disabled>2. Kivágat</button>
+    <button data-step="3" disabled>3. Modell</button>
+    <button data-step="4" disabled>4. Rétegek</button>
+    <button data-step="5" disabled>5. Megrendelés</button>
+  </nav>
+</header>
+
+<div class="layout">
+<aside>
+  <section class="step active" data-step="1">
+    <h2>Töltsd fel az útvonalad</h2>
+    <p class="lead">GPX-fájl futásból, túrából vagy kerékpározásból. A prototípusban a fájl a böngésződben marad.</p>
+    <label class="drop" id="drop"><input type="file" id="gpxFile" accept=".gpx" hidden><b>Húzd ide a GPX-fájlt</b><br>vagy kattints a tallózáshoz</label>
+    <button class="btn secondary" id="demoBtn">Minta útvonal betöltése</button>
+    <label class="field">Az eleje és a vége levágása</label>
+    <div class="row"><input type="range" id="trim" min="0" max="1500" step="50" value="0"><span class="val" id="trimV">0 m</span></div>
+    <p class="hint">A rajt és a cél gyakran a lakcímed. Itt mindkét véget levághatod.</p>
+    <div class="stats" id="stats"></div>
+    <button class="btn" id="toStep2" disabled>Tovább a kivágathoz</button>
+  </section>
+
+  <section class="step" data-step="2">
+    <h2>Jelöld ki a területet</h2>
+    <p class="lead">A keretet egérrel húzhatod. A mérete mindig akkora, hogy az egész útvonal beleférjen.</p>
+    <label class="field">Forma</label>
+    <div class="seg" id="shapeSeg"><button data-v="square" class="on">Négyzet</button><button data-v="circle">Kör</button><button data-v="hex">Hatszög</button></div>
+    <label class="field">Perem az útvonal körül</label>
+    <div class="row"><input type="range" id="margin" min="3" max="80" value="15"><span class="val" id="marginV">15%</span></div>
+    <label class="field">Elforgatás</label>
+    <div class="row"><input type="range" id="rot" min="0" max="359" value="0"><span class="val" id="rotV">0°</span></div>
+    <label class="field">Térképréteg</label>
+    <div class="seg" id="layerSeg"><button data-v="topo" class="on">Domborzati</button><button data-v="osm">Utcatérkép</button></div>
+    <button class="btn secondary" id="recenter">Keret az útvonal közepére</button>
+    <div class="stats" id="extentStats"></div>
+    <button class="btn" id="genBtn">Modell generálása</button>
+  </section>
+
+  <section class="step" data-step="3">
+    <h2>Állítsd be a modellt</h2>
+    <p class="lead">Minden változás után a modell automatikusan frissül.</p>
+    <fieldset><legend>Méret és terep</legend>
+      <label class="field">Szélesség</label>
+      <div class="seg" id="sizeSeg"><button data-v="100">100 mm</button><button data-v="150" class="on">150 mm</button><button data-v="200">200 mm</button></div>
+      <label class="field">Részletesség</label>
+      <div class="seg" id="qualSeg"><button data-v="fast">Gyors</button><button data-v="normal" class="on">Normál</button><button data-v="fine">Finom</button></div>
+      <label class="field">Magasságtorzítás</label>
+      <div class="row"><input type="range" id="exag" min="1" max="10" step="0.1" value="2"><span class="val" id="exagV">2.0×</span></div>
+      <label class="check"><input type="checkbox" id="exagAuto" checked> Automatikus, hogy sík terepen is mutasson</label>
+      <label class="field">Simítás</label>
+      <div class="row"><input type="range" id="smooth" min="0" max="6" value="1"><span class="val" id="smoothV">1</span></div>
+      <label class="field">Vastagság a terep alatt</label>
+      <div class="row"><input type="range" id="baseT" min="1" max="8" step="0.5" value="2"><span class="val" id="baseTV">2 mm</span></div>
+      <label class="field">Terep színsávjai</label>
+      <div class="seg" id="bandSeg"><button data-v="1">1</button><button data-v="2">2</button><button data-v="3" class="on">3</button><button data-v="4">4</button></div>
+    </fieldset>
+    <fieldset><legend>Útvonal</legend>
+      <label class="field">Típus</label>
+      <div class="seg" id="routeTypeSeg"><button data-v="ridge" class="on">Kiemelt gerinc</button><button data-v="flat">Simuló szalag</button></div>
+      <label class="field">Szélesség</label>
+      <div class="row"><input type="range" id="routeW" min="1" max="5" step="0.1" value="2"><span class="val" id="routeWV">2.0 mm</span></div>
+      <label class="field">Kiemelés (gerincnél)</label>
+      <div class="row"><input type="range" id="routeH" min="0.4" max="4" step="0.1" value="1.2"><span class="val" id="routeHV">1.2 mm</span></div>
+      <label class="check"><input type="checkbox" id="kit"> Készlet mód: vájat a terepben (kísérleti)</label>
+      <p class="hint">Készlet módban az útvonal külön betétként nyomtatható, és 0,2 mm hézaggal ül a terep vájatában.</p>
+    </fieldset>
+    <fieldset><legend>Talp és felirat</legend>
+      <label class="check"><input type="checkbox" id="plinth" checked> Talp a modell alatt</label>
+      <label class="field">Talp pereme</label>
+      <div class="row"><input type="range" id="plM" min="0" max="25" value="12"><span class="val" id="plMV">12 mm</span></div>
+      <label class="field">Talp magassága</label>
+      <div class="row"><input type="range" id="plH" min="2" max="12" value="5"><span class="val" id="plHV">5 mm</span></div>
+      <label class="field">Felirat a talp elején</label>
+      <input type="text" id="label" maxlength="40" placeholder="pl. Kéktúra · 2026">
+      <p class="hint" id="labelHint"></p>
+    </fieldset>
+    <button class="btn" id="toStep4">Tovább a rétegekhez</button>
+  </section>
+
+  <section class="step" data-step="4">
+    <h2>Rétegek és színek</h2>
+    <p class="lead">Minden alkatrész külön színnel, külön tálcán is nyomtatható. Széthúzott nézetben látod, mi lesz egy-egy rész.</p>
+    <label class="field">Széthúzott nézet</label>
+    <div class="row"><input type="range" id="explode" min="0" max="40" value="0"><span class="val" id="explodeV">0 mm</span></div>
+    <div class="parts" id="parts"></div>
+    <fieldset><legend>Rétegcsere egyszínű nyomtatón</legend>
+      <p class="hint" style="margin-top:0">A domborzat színsávjaihoz ezeken a magasságokon cseréld a filamentet (a tálcától mérve):</p>
+      <ol class="swaps" id="swaps"></ol>
+    </fieldset>
+    <button class="btn" id="toStep5">Tovább a megrendeléshez</button>
+  </section>
+
+  <section class="step" data-step="5">
+    <h2>Megrendelés</h2>
+    <p class="lead">Prototípus: a fájl letöltése ingyenes, a fizetés és a rendelés még nincs bekötve.</p>
+    <div class="card">
+      <h3>Nyomtatható fájl</h3>
+      <p class="hint" style="margin-top:2px">Saját nyomtatóra. Ár: később.</p>
+      <label class="field">Formátum</label>
+      <div class="seg" id="fmtSeg"><button data-v="3mf" class="on">3MF, többszínű</button><button data-v="kit">STL-készlet (ZIP)</button></div>
+      <p class="hint" id="fmtHint">Egy fájl, az alkatrészek külön részként; a slicerben mindegyik saját filamentet kaphat.</p>
+      <button class="btn" id="dlBtn">Letöltés</button>
+    </div>
+    <div class="card">
+      <h3>Kinyomtatom neked</h3>
+      <p class="hint" style="margin-top:2px">Kész, többszínű nyomtatott tárgy postán. Ebben a prototípusban még nem rendelhető.</p>
+      <div class="stats" id="orderStats"></div>
+      <button class="btn secondary" disabled>Rendelés – hamarosan</button>
+    </div>
+  </section>
+</aside>
+
+<section class="view">
+  <div id="map"></div>
+  <div id="three"></div>
+  <div class="overlayhint" id="viewHint">Az útvonal itt jelenik meg.</div>
+  <div class="status" id="status"></div>
+</section>
+</div>
+
+<footer>Domborzat: AWS Terrain Tiles (Mapzen; SRTM és más források) · Térkép: © OpenStreetMap közreműködők, © OpenTopoMap (CC-BY-SA) · Prototípus, nem végleges termék.</footer>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+const S = {
+  track: null, trimmed: null, trim: 0,
+  center: null, half: 0, shape: 'square', rot: 0, margin: 15, extentDirty: true,
+  dem: null, demKey: null, demBlur: null, demBlurLevel: -1,
+  size: 150, qual: 'normal', exagAuto: true, exag: 2, smooth: 1, baseT: 2, bands: 3,
+  routeType: 'ridge', routeW: 2, routeH: 1.2, kit: false,
+  plinth: true, plM: 12, plH: 5, label: '',
+  explode: 0, fmt: '3mf', zRange: [0, 1], parts: [],
+  colors: { plinth: '#2b2b2b', terrain: ['#6f8f5e', '#b49a6a', '#f2efe8', '#d9d4ca'], route: '#e4572e', text: '#f2efe8' },
+  visible: { plinth: true, terrain: true, route: true, text: true },
+};
+
+/* ---------- UI helpers ---------- */
+let stT;
+function status(msg, err = false, ms = 3500) {
+  const el = $('status'); el.textContent = msg; el.className = 'status show' + (err ? ' err' : '');
+  clearTimeout(stT); if (ms) stT = setTimeout(() => el.className = 'status', ms);
+}
+function seg(id, cb) {
+  const el = $(id);
+  el.querySelectorAll('button').forEach(b => b.onclick = () => {
+    el.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); cb(b.dataset.v);
+  });
+}
+function rng(id, fmt, cb) {
+  const el = $(id), v = $(id + 'V');
+  v.textContent = fmt(+el.value);
+  el.oninput = () => { v.textContent = fmt(+el.value); cb(+el.value); };
+}
+let maxStep = 1, cur = 1;
+function unlock(n) { maxStep = Math.max(maxStep, n); }
+function goStep(n) {
+  cur = n;
+  document.querySelectorAll('.step').forEach(s => s.classList.toggle('active', +s.dataset.step === n));
+  document.querySelectorAll('#steps button').forEach(b => { const k = +b.dataset.step; b.classList.toggle('active', k === n); b.disabled = k > maxStep; });
+  const show3d = n >= 3;
+  $('map').style.display = show3d ? 'none' : 'block';
+  $('three').style.display = show3d ? 'block' : 'none';
+  $('viewHint').textContent = show3d ? 'Forgatás: bal gomb · Nagyítás: görgő · Mozgatás: jobb gomb'
+    : n === 2 ? 'A keretet egérrel húzhatod.' : 'Az útvonal itt jelenik meg.';
+  if (show3d) { resize3d(); if (S.extentDirty || !S.parts.length) doBuild(true); }
+  else setTimeout(() => map.invalidateSize(), 50);
+}
+document.querySelectorAll('#steps button').forEach(b => b.onclick = () => goStep(+b.dataset.step));
+
+/* ---------- Geo ---------- */
+const R_E = 6371008.8, D2R = Math.PI / 180, TILE = 256;
+function hav(a, b) {
+  const dLat = (b.lat - a.lat) * D2R, dLon = (b.lon - a.lon) * D2R;
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * D2R) * Math.cos(b.lat * D2R) * Math.sin(dLon / 2) ** 2;
+  return 2 * R_E * Math.asin(Math.sqrt(s));
+}
+function toEN(lat, lon) { const c = S.center; return [(lon - c.lon) * D2R * R_E * Math.cos(c.lat * D2R), (lat - c.lat) * D2R * R_E]; }
+function fromEN(e, n) { const c = S.center; return { lat: c.lat + n / R_E / D2R, lon: c.lon + e / (R_E * Math.cos(c.lat * D2R)) / D2R }; }
+function enToUV(e, n) { const r = S.rot * D2R, c = Math.cos(r), s = Math.sin(r); return [e * c + n * s, -e * s + n * c]; }
+function uvToEN(u, v) { const r = S.rot * D2R, c = Math.cos(r), s = Math.sin(r); return [u * c - v * s, u * s + v * c]; }
+function lon2px(lon, z) { return (lon + 180) / 360 * TILE * 2 ** z; }
+function lat2px(lat, z) { const r = lat * D2R; return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * TILE * 2 ** z; }
+
+// GEOM-START
+// Radius of the unit shape (R=1) in direction th. Hexagon is flat-topped: flat edges face front and back.
+function rUnit(shape, th) {
+  if (shape === 'circle') return 1;
+  if (shape === 'square') return 1 / Math.max(Math.abs(Math.cos(th)), Math.abs(Math.sin(th)));
+  const a = Math.cos(Math.PI / 6), p = Math.PI / 3;
+  const t = ((th % p) + p) % p;
+  return a / Math.cos(t - Math.PI / 6);
+}
+
+// Watertight solid on a polar grid: center vertex + Nr rings of Ns vertices, top heights Z, flat bottom at zBot.
+function radialSolid(Nr, Ns, U, V, Z, zBot) {
+  const nTop = 1 + Nr * Ns;
+  const pos = new Float32Array((nTop + Ns + 1) * 3);
+  for (let k = 0; k < nTop; k++) { pos[k * 3] = U[k]; pos[k * 3 + 1] = V[k]; pos[k * 3 + 2] = Z[k]; }
+  const ob = 1 + (Nr - 1) * Ns;
+  for (let j = 0; j < Ns; j++) { const t = nTop + j, s = ob + j; pos[t * 3] = U[s]; pos[t * 3 + 1] = V[s]; pos[t * 3 + 2] = zBot; }
+  const bc = nTop + Ns; pos[bc * 3] = 0; pos[bc * 3 + 1] = 0; pos[bc * 3 + 2] = zBot;
+  const idx = [];
+  const ring = (i, j) => 1 + (i - 1) * Ns + (((j % Ns) + Ns) % Ns);
+  for (let j = 0; j < Ns; j++) idx.push(0, ring(1, j), ring(1, j + 1));
+  for (let i = 1; i < Nr; i++) for (let j = 0; j < Ns; j++) {
+    const a = ring(i, j), b = ring(i + 1, j), c = ring(i + 1, j + 1), d = ring(i, j + 1);
+    idx.push(a, b, c, a, c, d);
+  }
+  for (let j = 0; j < Ns; j++) {
+    const tj = ring(Nr, j), tj1 = ring(Nr, j + 1), qj = nTop + j, qj1 = nTop + (j + 1) % Ns;
+    idx.push(qj, qj1, tj1, qj, tj1, tj);
+    idx.push(bc, qj1, qj);
+  }
+  return { pos, idx: new Uint32Array(idx) };
+}
+
+// Route ribbon: a closed box section following each polyline. hUV gives the terrain surface height.
+const GROOVE = 1.2;
+function routeMesh(polys, hUV, zMin) {
+  const w = S.kit ? S.routeW - 0.4 : S.routeW;
+  const pos = [], idx = [];
+  for (const P of polys) {
+    const n = P.length, base = pos.length / 3;
+    for (let k = 0; k < n; k++) {
+      const a = P[Math.max(0, k - 1)], b = P[Math.min(n - 1, k + 1)];
+      let tx = b[0] - a[0], ty = b[1] - a[1]; const L = Math.hypot(tx, ty) || 1; tx /= L; ty /= L;
+      const nx = -ty, ny = tx, hw = w / 2;
+      const lu = P[k][0] + nx * hw, lv = P[k][1] + ny * hw, ru = P[k][0] - nx * hw, rv = P[k][1] - ny * hw;
+      const hl = hUV(lu, lv), hc = hUV(P[k][0], P[k][1]), hr = hUV(ru, rv);
+      const hi = Math.max(hl, hc, hr), lo = Math.min(hl, hc, hr);
+      const top = S.routeType === 'ridge' ? hi + S.routeH : hi + 0.6;
+      const bot = Math.max(zMin + 0.4, lo - (S.kit ? GROOVE : 1.0));
+      pos.push(lu, lv, top, ru, rv, top, lu, lv, bot, ru, rv, bot);
+    }
+    for (let k = 0; k < n - 1; k++) {
+      const o = base + k * 4, p = o + 4;
+      const TL = o, TR = o + 1, BL = o + 2, BR = o + 3, TL1 = p, TR1 = p + 1, BL1 = p + 2, BR1 = p + 3;
+      idx.push(TL, TR, TR1, TL, TR1, TL1);
+      idx.push(BL, BR1, BR, BL, BL1, BR1);
+      idx.push(BL, TL, TL1, BL, TL1, BL1);
+      idx.push(BR, TR1, TR, BR, BR1, TR1);
+    }
+    const s = base, e = base + (n - 1) * 4;
+    idx.push(s + 2, s + 3, s + 1, s + 2, s + 1, s);
+    idx.push(e + 2, e + 1, e + 3, e + 2, e, e + 1);
+  }
+  return { pos: new Float32Array(pos), idx: new Uint32Array(idx) };
+}
+
+// Extrudes a bitmap (1 = ink) into a solid made of shared-vertex voxel columns.
+function voxelMesh(bits, cols, rows, p, u0, vT, z0, z1) {
+  const map = new Map(), pos = [], idx = [];
+  const Vx = (cx, cy, top) => {
+    const key = (cx * 8192 + cy) * 2 + (top ? 1 : 0);
+    let i = map.get(key);
+    if (i === undefined) { i = pos.length / 3; pos.push(u0 + cx * p, vT - cy * p, top ? z1 : z0); map.set(key, i); }
+    return i;
+  };
+  const on = (x, y) => x >= 0 && y >= 0 && x < cols && y < rows && bits[y * cols + x] === 1;
+  for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+    if (!on(x, y)) continue;
+    const at = Vx(x, y, 1), bt = Vx(x + 1, y, 1), ct = Vx(x + 1, y + 1, 1), dt = Vx(x, y + 1, 1);
+    const ab = Vx(x, y, 0), bb = Vx(x + 1, y, 0), cb = Vx(x + 1, y + 1, 0), db = Vx(x, y + 1, 0);
+    idx.push(at, dt, ct, at, ct, bt);
+    idx.push(ab, bb, cb, ab, cb, db);
+    if (!on(x - 1, y)) idx.push(ab, db, dt, ab, dt, at);
+    if (!on(x + 1, y)) idx.push(cb, bb, bt, cb, bt, ct);
+    if (!on(x, y - 1)) idx.push(bb, ab, at, bb, at, bt);
+    if (!on(x, y + 1)) idx.push(db, cb, ct, db, ct, dt);
+  }
+  return { pos: new Float32Array(pos), idx: new Uint32Array(idx) };
+}
+
+function volume(m) {
+  const P = m.pos, I = m.idx; let v = 0;
+  for (let t = 0; t < I.length; t += 3) {
+    const a = I[t] * 3, b = I[t + 1] * 3, c = I[t + 2] * 3;
+    v += P[a] * (P[b + 1] * P[c + 2] - P[b + 2] * P[c + 1]) - P[a + 1] * (P[b] * P[c + 2] - P[b + 2] * P[c]) + P[a + 2] * (P[b] * P[c + 1] - P[b + 1] * P[c]);
+  }
+  return v / 6;
+}
+// GEOM-END
+
+/* ---------- Map ---------- */
+const map = L.map('map').setView([47.2, 19.4], 7);
+const layers = {
+  topo: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 17, attribution: '© OpenStreetMap közreműködők, SRTM · © OpenTopoMap (CC-BY-SA)' }),
+  osm: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap közreműködők' }),
+};
+layers.topo.addTo(map);
+let routeLine = null, extentPoly = null, dragState = null;
+
+function outlineLatLng() {
+  const out = [];
+  for (let i = 0; i < 360; i++) {
+    const th = i * D2R, r = S.half * rUnit(S.shape, th);
+    const en = uvToEN(r * Math.cos(th), r * Math.sin(th)), ll = fromEN(en[0], en[1]);
+    out.push([ll.lat, ll.lon]);
+  }
+  return out;
+}
+function fitExtent(recenter) {
+  const pts = S.trimmed; if (!pts || pts.length < 2) return;
+  if (recenter || !S.center) {
+    let la0 = 90, la1 = -90, lo0 = 180, lo1 = -180;
+    for (const p of pts) { la0 = Math.min(la0, p.lat); la1 = Math.max(la1, p.lat); lo0 = Math.min(lo0, p.lon); lo1 = Math.max(lo1, p.lon); }
+    S.center = { lat: (la0 + la1) / 2, lon: (lo0 + lo1) / 2 };
+  }
+  let need = 0;
+  for (const p of pts) {
+    const en = toEN(p.lat, p.lon), uv = enToUV(en[0], en[1]), r = Math.hypot(uv[0], uv[1]);
+    if (r > 1e-6) need = Math.max(need, r / rUnit(S.shape, Math.atan2(uv[1], uv[0])));
+  }
+  S.half = Math.max(need * (1 + S.margin / 100), 300);
+  S.extentDirty = true;
+  drawExtent();
+}
+function drawExtent() {
+  const ll = outlineLatLng();
+  if (extentPoly) extentPoly.setLatLngs(ll);
+  else {
+    extentPoly = L.polygon(ll, { color: '#2f5d46', weight: 2, fillColor: '#2f5d46', fillOpacity: .08 }).addTo(map);
+    extentPoly.on('mousedown', e => { dragState = { start: e.latlng, c: { ...S.center } }; map.dragging.disable(); L.DomEvent.stop(e); });
+  }
+  const km = S.half * 2 / 1000;
+  $('extentStats').innerHTML =
+    `<div class="stat"><b>${km.toFixed(1)} km</b><small>kivágat szélessége</small></div>` +
+    `<div class="stat"><b>1:${Math.round(S.half * 2 * 1000 / S.size).toLocaleString('hu')}</b><small>méretarány ${S.size} mm-nél</small></div>`;
+}
+map.on('mousemove', e => {
+  if (!dragState) return;
+  S.center = { lat: dragState.c.lat + (e.latlng.lat - dragState.start.lat), lon: dragState.c.lon + (e.latlng.lng - dragState.start.lng) };
+  fitExtent(false);
+});
+map.on('mouseup', () => { if (dragState) { dragState = null; map.dragging.enable(); } });
+
+function drawRoute() {
+  const ll = S.trimmed.map(p => [p.lat, p.lon]);
+  if (routeLine) routeLine.setLatLngs(ll);
+  else routeLine = L.polyline(ll, { color: '#e4572e', weight: 4, opacity: .9 }).addTo(map);
+  map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
+}
+
+/* ---------- GPX ---------- */
+function parseGPX(text) {
+  const doc = new DOMParser().parseFromString(text, 'application/xml');
+  if (doc.getElementsByTagName('parsererror').length) throw new Error('Ez nem olvasható GPX-fájl.');
+  let nodes = [...doc.getElementsByTagName('trkpt')];
+  if (nodes.length < 2) nodes = [...doc.getElementsByTagName('rtept')];
+  if (nodes.length < 2) throw new Error('A fájlban nem találtam útvonalpontokat.');
+  const pts = nodes.map(n => {
+    const e = n.getElementsByTagName('ele')[0];
+    return { lat: +n.getAttribute('lat'), lon: +n.getAttribute('lon'), ele: e ? +e.textContent : null };
+  }).filter(p => isFinite(p.lat) && isFinite(p.lon));
+  const nm = doc.getElementsByTagName('name')[0];
+  return { pts, name: nm ? nm.textContent.trim() : '' };
+}
+function demoTrack() {
+  const c = { lat: 47.8727, lon: 20.0094 }, pts = [], N = 600;
+  for (let i = 0; i <= N; i++) {
+    const t = i / N * Math.PI * 2, r = 2600 + 700 * Math.sin(3 * t) + 300 * Math.cos(7 * t);
+    const e = r * Math.cos(t) * 1.2, n = r * Math.sin(t) * 0.8;
+    pts.push({ lat: c.lat + n / R_E / D2R, lon: c.lon + e / (R_E * Math.cos(c.lat * D2R)) / D2R, ele: null });
+  }
+  return { pts, name: 'Kékes kör (minta)' };
+}
+function applyTrim() {
+  const pts = S.track.pts, t = S.trim; let a = 0, d = 0;
+  while (a < pts.length - 2 && d < t) { d += hav(pts[a], pts[a + 1]); a++; }
+  let b = pts.length - 1; d = 0;
+  while (b > a + 1 && d < t) { d += hav(pts[b], pts[b - 1]); b--; }
+  S.trimmed = pts.slice(a, b + 1);
+}
+function renderTrackStats() {
+  const p = S.trimmed; let L = 0, g = 0;
+  for (let i = 1; i < p.length; i++) L += hav(p[i - 1], p[i]);
+  const hasE = p.some(x => x.ele != null && isFinite(x.ele));
+  if (hasE) { let ref = p.find(x => x.ele != null).ele; for (const q of p) { if (q.ele == null) continue; if (q.ele > ref + 3) { g += q.ele - ref; ref = q.ele; } else if (q.ele < ref - 3) ref = q.ele; } }
+  $('stats').innerHTML =
+    `<div class="stat"><b>${(L / 1000).toFixed(1)} km</b><small>hossz</small></div>` +
+    `<div class="stat"><b>${hasE ? Math.round(g) + ' m' : '–'}</b><small>szintemelkedés</small></div>` +
+    `<div class="stat"><b>${p.length.toLocaleString('hu')}</b><small>pont</small></div>` +
+    `<div class="stat"><b title="${esc(S.track.name)}">${esc(S.track.name || 'Névtelen')}</b><small>név</small></div>`;
+}
+function loadTrack(tr) {
+  if (tr.pts.length < 2) throw new Error('Túl kevés pont az útvonalban.');
+  S.track = tr; applyTrim(); S.center = null; S.parts = []; S.extentDirty = true; maxStep = 2;
+  if (!S.label) { S.label = (tr.name || '').slice(0, 40); $('label').value = S.label; }
+  drawRoute(); renderTrackStats(); if (extentPoly) fitExtent(true);
+  $('toStep2').disabled = false; goStep(1);
+  status('Útvonal betöltve.');
+}
+async function readFile(f) {
+  try { loadTrack(parseGPX(await f.text())); } catch (e) { status(e.message, true, 6000); }
+}
+$('gpxFile').onchange = e => { if (e.target.files[0]) readFile(e.target.files[0]); };
+const drop = $('drop');
+['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) readFile(f); });
+$('demoBtn').onclick = () => loadTrack(demoTrack());
+rng('trim', v => v + ' m', v => { S.trim = v; if (S.track) { applyTrim(); drawRoute(); renderTrackStats(); S.parts = []; if (extentPoly) fitExtent(false); } });
+$('toStep2').onclick = () => {
+  unlock(2); goStep(2);
+  if (!S.center || !extentPoly) fitExtent(true);
+  map.fitBounds(extentPoly.getBounds(), { padding: [30, 30] });
+};
+
+/* ---------- Step 2 controls ---------- */
+seg('shapeSeg', v => { S.shape = v; fitExtent(false); });
+rng('margin', v => v + '%', v => { S.margin = v; fitExtent(false); });
+rng('rot', v => v + '°', v => { S.rot = v; fitExtent(false); });
+seg('layerSeg', v => { Object.values(layers).forEach(l => map.removeLayer(l)); layers[v].addTo(map); });
+$('recenter').onclick = () => fitExtent(true);
+$('genBtn').onclick = () => { unlock(5); goStep(3); };
+
+/* ---------- Elevation tiles ---------- */
+async function loadDEM() {
+  const key = [S.center.lat.toFixed(6), S.center.lon.toFixed(6), Math.round(S.half), S.shape, S.rot].join('|');
+  if (S.dem && S.demKey === key) return;
+  const ll = outlineLatLng();
+  let la0 = 90, la1 = -90, lo0 = 180, lo1 = -180;
+  for (const [a, b] of ll) { la0 = Math.min(la0, a); la1 = Math.max(la1, a); lo0 = Math.min(lo0, b); lo1 = Math.max(lo1, b); }
+  const pa = (la1 - la0) * 0.03, po = (lo1 - lo0) * 0.03; la0 -= pa; la1 += pa; lo0 -= po; lo1 += po;
+  const targetMpp = (S.half * 2) / 700;
+  let z = Math.floor(Math.log2(156543.034 * Math.cos(S.center.lat * D2R) / targetMpp));
+  z = Math.max(3, Math.min(15, z));
+  let tx0, tx1, ty0, ty1;
+  for (;;) {
+    tx0 = Math.floor(lon2px(lo0, z) / TILE); tx1 = Math.floor(lon2px(lo1, z) / TILE);
+    ty0 = Math.floor(lat2px(la1, z) / TILE); ty1 = Math.floor(lat2px(la0, z) / TILE);
+    if ((tx1 - tx0 + 1) * (ty1 - ty0 + 1) <= 64 || z <= 3) break;
+    z--;
+  }
+  const nx = tx1 - tx0 + 1, ny = ty1 - ty0 + 1;
+  status(`Domborzat letöltése: ${nx * ny} csempe…`, false, 0);
+  const cv = document.createElement('canvas'); cv.width = nx * TILE; cv.height = ny * TILE;
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  await Promise.all(Array.from({ length: nx * ny }, (_, k) => {
+    const x = tx0 + k % nx, y = ty0 + Math.floor(k / nx);
+    return new Promise((res, rej) => {
+      const im = new Image(); im.crossOrigin = 'anonymous';
+      im.onload = () => { ctx.drawImage(im, (x - tx0) * TILE, (y - ty0) * TILE); res(); };
+      im.onerror = () => rej(new Error('A domborzati adat nem tölthető le. Ellenőrizd az internetkapcsolatot.'));
+      im.src = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`;
+    });
+  }));
+  const id = ctx.getImageData(0, 0, cv.width, cv.height).data, el = new Float32Array(cv.width * cv.height);
+  for (let i = 0; i < el.length; i++) el[i] = id[i * 4] * 256 + id[i * 4 + 1] + id[i * 4 + 2] / 256 - 32768;
+  S.dem = { z, ox: tx0 * TILE, oy: ty0 * TILE, w: cv.width, h: cv.height, el };
+  S.demKey = key; S.demBlurLevel = -1;
+}
+function getBlur() {
+  if (S.demBlurLevel === S.smooth) return S.demBlur;
+  const { w, h, el } = S.dem; const a = Float32Array.from(el), b = new Float32Array(a.length);
+  for (let it = 0; it < S.smooth * 2; it++) {
+    for (let y = 0; y < h; y++) { const o = y * w; for (let x = 0; x < w; x++) b[o + x] = (a[o + Math.max(0, x - 1)] + a[o + x] + a[o + Math.min(w - 1, x + 1)]) / 3; }
+    for (let y = 0; y < h; y++) { const o = y * w, y0 = Math.max(0, y - 1) * w, y1 = Math.min(h - 1, y + 1) * w; for (let x = 0; x < w; x++) a[o + x] = (b[y0 + x] + b[o + x] + b[y1 + x]) / 3; }
+  }
+  S.demBlur = a; S.demBlurLevel = S.smooth; return a;
+}
+function elevAtLL(lat, lon, arr) {
+  const d = S.dem;
+  const x = Math.max(0, Math.min(d.w - 1.001, lon2px(lon, d.z) - d.ox - 0.5));
+  const y = Math.max(0, Math.min(d.h - 1.001, lat2px(lat, d.z) - d.oy - 0.5));
+  const x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0, i = y0 * d.w + x0;
+  return (arr[i] * (1 - fx) + arr[i + 1] * fx) * (1 - fy) + (arr[i + d.w] * (1 - fx) + arr[i + d.w + 1] * fx) * fy;
+}
+
+/* ---------- Model ---------- */
+function routePolys(sc, rT) {
+  const mm = S.trimmed.map(p => { const en = toEN(p.lat, p.lon), uv = enToUV(en[0], en[1]); return [uv[0] * sc, uv[1] * sc]; });
+  const step = 0.5, rs = [mm[0]]; let since = 0;
+  for (let i = 1; i < mm.length; i++) {
+    const a = mm[i - 1], b = mm[i], d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (d < 1e-9) continue;
+    let t = step - since;
+    while (t <= d) { rs.push([a[0] + (b[0] - a[0]) * t / d, a[1] + (b[1] - a[1]) * t / d]); t += step; }
+    since = d - (t - step);
+  }
+  let P = rs;
+  for (let pass = 0; pass < 2; pass++) {
+    const Q = P;
+    P = Q.map((p, i) => { let su = 0, sv = 0, c = 0; for (let o = -2; o <= 2; o++) { const q = Q[i + o]; if (q) { su += q[0]; sv += q[1]; c++; } } return [su / c, sv / c]; });
+  }
+  const lim = S.routeW / 2 + 1, polys = []; let cur = [];
+  for (const p of P) {
+    if (Math.hypot(p[0], p[1]) < rT(Math.atan2(p[1], p[0])) - lim) cur.push(p);
+    else { if (cur.length > 3) polys.push(cur); cur = []; }
+  }
+  if (cur.length > 3) polys.push(cur);
+  return polys;
+}
+function carve(Z, U, V, polys) {
+  const r = S.routeW / 2 + 0.2, cell = Math.max(1, r), grid = new Map(), key = (a, b) => a + ',' + b;
+  for (const P of polys) for (const p of P) {
+    const k = key(Math.floor(p[0] / cell), Math.floor(p[1] / cell));
+    if (!grid.has(k)) grid.set(k, []); grid.get(k).push(p);
+  }
+  for (let i = 0; i < Z.length; i++) {
+    const gx = Math.floor(U[i] / cell), gy = Math.floor(V[i] / cell); let hit = false;
+    for (let dx = -1; dx <= 1 && !hit; dx++) for (let dy = -1; dy <= 1 && !hit; dy++) {
+      const L = grid.get(key(gx + dx, gy + dy)); if (!L) continue;
+      for (const p of L) if ((p[0] - U[i]) ** 2 + (p[1] - V[i]) ** 2 < r * r) { hit = true; break; }
+    }
+    if (hit) Z[i] -= GROOVE;
+  }
+}
+function rasterText(txt, rowsT) {
+  const fpx = Math.max(8, rowsT), font = `800 ${fpx}px Manrope, system-ui, sans-serif`;
+  const cv = document.createElement('canvas'), ctx = cv.getContext('2d', { willReadFrequently: true });
+  ctx.font = font;
+  const w = Math.ceil(ctx.measureText(txt).width) + 8, h = Math.ceil(fpx * 1.6) + 8;
+  cv.width = w; cv.height = h; ctx.font = font; ctx.textBaseline = 'middle'; ctx.fillStyle = '#000'; ctx.fillText(txt, 4, h / 2);
+  const d = ctx.getImageData(0, 0, w, h).data;
+  let x0 = w, x1 = -1, y0 = h, y1 = -1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 127) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (x1 < 0) return { cols: 0, rows: 0, bits: new Uint8Array(0) };
+  const cols = x1 - x0 + 1, rows = y1 - y0 + 1, bits = new Uint8Array(cols * rows);
+  for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) bits[y * cols + x] = d[((y + y0) * w + x + x0) * 4 + 3] > 127 ? 1 : 0;
+  return { cols, rows, bits };
+}
+function textMesh(rT, rP) {
+  const txt = S.label.trim(); if (!txt) return null;
+  if (!S.plinth) { $('labelHint').textContent = 'A felirat a talpra kerül: kapcsold be a talpat.'; return null; }
+  const m = S.plM; if (m < 6) { $('labelHint').textContent = 'A felirathoz legalább 6 mm-es talpperem kell.'; return null; }
+  const fits = (u, v) => { const r = Math.hypot(u, v), th = Math.atan2(v, u); return r > rT(th) + 0.8 && r < rP(th) - 0.8; };
+  const vc = -(rT(-Math.PI / 2) + m / 2), p = 0.2;
+  let H = Math.min(m - 2.4, 9), bm = null, maxW = 0;
+  for (let a = 0; a < 6; a++) {
+    let u = 0;
+    while (u < 400 && fits(u, vc - H / 2) && fits(u, vc + H / 2) && fits(-u, vc - H / 2) && fits(-u, vc + H / 2)) u += 0.25;
+    maxW = 2 * u * 0.95;
+    bm = rasterText(txt, Math.round(H / p));
+    if (bm.cols * p <= maxW) break;
+    H *= Math.max(0.5, maxW / (bm.cols * p) * 0.97);
+  }
+  if (!bm || !bm.cols || bm.cols * p > maxW || H < 2.5) { $('labelHint').textContent = 'A felirat túl hosszú ehhez a mérethez és formához.'; return null; }
+  return voxelMesh(bm.bits, bm.cols, bm.rows, p, -bm.cols * p / 2, vc + bm.rows * p / 2, S.plH, S.plH + 1.0);
+}
+function buildModel() {
+  $('labelHint').textContent = '';
+  const arr = getBlur(), sc = S.size / (2 * S.half), Rmm = S.size / 2;
+  const [Nr, Ns] = { fast: [70, 240], normal: [130, 480], fine: [200, 720] }[S.qual];
+  const rT = th => Rmm * rUnit(S.shape, th), rP = th => rT(th) + S.plM;
+  const elevUV = (u, v) => { const en = uvToEN(u / sc, v / sc), ll = fromEN(en[0], en[1]); return elevAtLL(ll.lat, ll.lon, arr); };
+  const n = 1 + Nr * Ns, U = new Float32Array(n), V = new Float32Array(n), E = new Float32Array(n);
+  E[0] = elevUV(0, 0);
+  for (let i = 1; i <= Nr; i++) for (let j = 0; j < Ns; j++) {
+    const th = j / Ns * 2 * Math.PI, r = i / Nr * rT(th), k = 1 + (i - 1) * Ns + j;
+    U[k] = r * Math.cos(th); V[k] = r * Math.sin(th); E[k] = elevUV(U[k], V[k]);
+  }
+  let mn = Infinity, mx = -Infinity;
+  for (let i = 0; i < n; i++) { if (E[i] < mn) mn = E[i]; if (E[i] > mx) mx = E[i]; }
+  if (S.exagAuto) {
+    let ex = (0.12 * S.size) / (Math.max(1, mx - mn) * sc);
+    ex = Math.round(Math.min(10, Math.max(1, ex)) * 10) / 10;
+    S.exag = ex; $('exag').value = ex; $('exagV').textContent = ex.toFixed(1) + '×';
+  }
+  const z0 = S.plinth ? S.plH : 0, zb = z0 + S.baseT, k = sc * S.exag;
+  const hUV = (u, v) => zb + (elevUV(u, v) - mn) * k;
+  const Z = new Float32Array(n);
+  for (let i = 0; i < n; i++) Z[i] = zb + (E[i] - mn) * k;
+  const polys = routePolys(sc, rT);
+  if (S.kit && polys.length) carve(Z, U, V, polys);
+  S.zRange = [zb, zb + Math.max(0.5, (mx - mn) * k)];
+  const parts = [];
+  if (S.plinth) {
+    const Np = Math.max(120, Ns / 2 | 0), pu = new Float32Array(1 + Np), pv = new Float32Array(1 + Np), pz = new Float32Array(1 + Np).fill(S.plH);
+    for (let j = 0; j < Np; j++) { const th = j / Np * 2 * Math.PI, r = rP(th); pu[1 + j] = r * Math.cos(th); pv[1 + j] = r * Math.sin(th); }
+    parts.push({ key: 'plinth', name: 'Talp', mesh: radialSolid(1, Np, pu, pv, pz, 0) });
+  }
+  parts.push({ key: 'terrain', name: 'Domborzat', mesh: radialSolid(Nr, Ns, U, V, Z, z0) });
+  if (polys.length) parts.push({ key: 'route', name: 'Útvonal', mesh: routeMesh(polys, hUV, z0) });
+  const tm = textMesh(rT, rP); if (tm) parts.push({ key: 'text', name: 'Felirat', mesh: tm });
+  return parts;
+}
+
+/* ---------- 3D view ---------- */
+const host = $('three');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+host.appendChild(renderer.domElement);
+renderer.domElement.style.cssText = 'width:100%;height:100%;display:block';
+const scene = new THREE.Scene(); scene.background = new THREE.Color('#ece7dc');
+const camera = new THREE.PerspectiveCamera(35, 1, 0.5, 5000); camera.up.set(0, 0, 1); camera.position.set(0, -220, 180);
+const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a7f6a, 1.2));
+const sun = new THREE.DirectionalLight(0xffffff, 1.8); sun.position.set(-160, -120, 260); scene.add(sun);
+const gridH = new THREE.GridHelper(400, 40, 0xc9c1b0, 0xddd6c8); gridH.rotation.x = Math.PI / 2; scene.add(gridH);
+const group = new THREE.Group(); scene.add(group);
+function resize3d() {
+  const r = host.getBoundingClientRect(); if (!r.width || !r.height) return;
+  renderer.setSize(r.width, r.height, false); camera.aspect = r.width / r.height; camera.updateProjectionMatrix();
+}
+addEventListener('resize', () => { if (cur >= 3) resize3d(); });
+(function loop() { requestAnimationFrame(loop); controls.update(); renderer.render(scene, camera); })();
+
+function colorBands(g) {
+  const pos = g.attributes.position.array;
+  let col = g.attributes.color;
+  if (!col) { col = new THREE.BufferAttribute(new Float32Array(pos.length), 3); g.setAttribute('color', col); }
+  const [a, b] = S.zRange, n = S.bands, cs = S.colors.terrain.map(c => new THREE.Color(c));
+  for (let t = 0; t < pos.length; t += 9) {
+    const z = (pos[t + 2] + pos[t + 5] + pos[t + 8]) / 3;
+    const c = cs[Math.max(0, Math.min(n - 1, Math.floor((z - a) / (b - a) * n)))];
+    for (let q = 0; q < 3; q++) { col.array[t + q * 3] = c.r; col.array[t + q * 3 + 1] = c.g; col.array[t + q * 3 + 2] = c.b; }
+  }
+  col.needsUpdate = true;
+}
+function showParts() {
+  group.children.forEach(o => { o.geometry.dispose(); o.material.dispose(); });
+  group.clear();
+  for (const pt of S.parts) {
+    let g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pt.mesh.pos, 3));
+    g.setIndex(new THREE.BufferAttribute(pt.mesh.idx, 1));
+    g.computeVertexNormals();
+    let mat;
+    if (pt.key === 'terrain') { g = g.toNonIndexed(); colorBands(g); mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .9 }); }
+    else mat = new THREE.MeshStandardMaterial({ color: S.colors[pt.key], roughness: .75, flatShading: pt.key === 'text' });
+    const m = new THREE.Mesh(g, mat); m.userData.key = pt.key; group.add(m);
+  }
+  applyExplode(); applyVisibility();
+}
+function applyExplode() {
+  const e = S.explode;
+  for (const o of group.children) { const k = o.userData.key; o.position.z = k === 'terrain' ? e : k === 'route' ? 2 * e : k === 'text' ? 0.5 * e : 0; }
+}
+function applyVisibility() { for (const o of group.children) o.visible = S.visible[o.userData.key] !== false; }
+function fitCam() { camera.position.set(0, -S.size * 1.35, S.size * 1.05); controls.target.set(0, 0, (S.plinth ? S.plH : 0) + 8); controls.update(); }
+
+function renderParts() {
+  const el = $('parts'); el.innerHTML = '';
+  for (const pt of S.parts) {
+    const cols = pt.key === 'terrain' ? S.colors.terrain.slice(0, S.bands) : [S.colors[pt.key]];
+    const tris = pt.mesh.idx.length / 3, vol = volume(pt.mesh) / 1000;
+    const row = document.createElement('div'); row.className = 'part';
+    row.innerHTML = `<div class="swatches">${cols.map((c, i) => `<input type="color" value="${c}" data-i="${i}" title="Szín">`).join('')}</div>
+      <div><b>${pt.name}</b><small>${tris.toLocaleString('hu')} háromszög · ${vol.toFixed(1)} cm³</small></div>
+      <label class="check" style="margin:0"><input type="checkbox" ${S.visible[pt.key] ? 'checked' : ''}> látszik</label>`;
+    row.querySelectorAll('input[type=color]').forEach(inp => inp.oninput = () => {
+      const obj = group.children.find(o => o.userData.key === pt.key);
+      if (pt.key === 'terrain') { S.colors.terrain[+inp.dataset.i] = inp.value; if (obj) colorBands(obj.geometry); renderSwaps(); }
+      else { S.colors[pt.key] = inp.value; if (obj) obj.material.color.set(inp.value); }
+    });
+    row.querySelector('input[type=checkbox]').onchange = e => { S.visible[pt.key] = e.target.checked; applyVisibility(); };
+    el.appendChild(row);
+  }
+}
+function bandHeights() { const [a, b] = S.zRange, out = []; for (let i = 1; i < S.bands; i++) out.push(a + (b - a) * i / S.bands); return out; }
+function renderSwaps() {
+  const ol = $('swaps'); ol.innerHTML = '';
+  if (S.bands < 2) { ol.innerHTML = '<li>Egy szín: nincs csere.</li>'; return; }
+  bandHeights().forEach((z, i) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<b>${z.toFixed(1)} mm</b> → <span class="dot" style="background:${S.colors.terrain[i + 1]}"></span> ${i + 2}. szín`;
+    ol.appendChild(li);
+  });
+}
+function renderOrder() {
+  const vol = S.parts.reduce((s, p) => s + volume(p.mesh), 0) / 1000;
+  $('orderStats').innerHTML =
+    `<div class="stat"><b>${S.size} mm</b><small>szélesség</small></div>` +
+    `<div class="stat"><b>${S.parts.length}</b><small>alkatrész</small></div>` +
+    `<div class="stat"><b>~${Math.round(vol * 1.24 * 0.35)} g</b><small>filament, durva becslés</small></div>` +
+    `<div class="stat"><b>${vol.toFixed(0)} cm³</b><small>tömör térfogat</small></div>`;
+}
+
+let building = false, rebuildT;
+async function doBuild(fit) {
+  if (building || !S.trimmed) return;
+  building = true; $('genBtn').disabled = true;
+  try {
+    await loadDEM();
+    status('Modell számítása…', false, 0);
+    await new Promise(r => setTimeout(r, 30));
+    const t0 = performance.now();
+    S.parts = buildModel(); S.extentDirty = false;
+    showParts(); renderParts(); renderSwaps(); renderOrder();
+    if (fit) fitCam();
+    status(`Kész (${Math.round(performance.now() - t0)} ms).`);
+  } catch (e) { console.error(e); status(e.message || 'Hiba történt a modell készítésekor.', true, 7000); }
+  finally { building = false; $('genBtn').disabled = false; }
+}
+function scheduleBuild() { if (!S.parts.length && !S.extentDirty) return; clearTimeout(rebuildT); rebuildT = setTimeout(() => doBuild(false), 220); }
+
+/* ---------- Step 3–4 controls ---------- */
+seg('sizeSeg', v => { S.size = +v; drawExtent(); scheduleBuild(); });
+seg('qualSeg', v => { S.qual = v; scheduleBuild(); });
+rng('exag', v => v.toFixed(1) + '×', v => { S.exag = v; S.exagAuto = false; $('exagAuto').checked = false; scheduleBuild(); });
+$('exagAuto').onchange = e => { S.exagAuto = e.target.checked; scheduleBuild(); };
+rng('smooth', v => String(v), v => { S.smooth = v; scheduleBuild(); });
+rng('baseT', v => v + ' mm', v => { S.baseT = v; scheduleBuild(); });
+seg('bandSeg', v => { S.bands = +v; if (S.parts.length) { showParts(); renderParts(); renderSwaps(); } });
+seg('routeTypeSeg', v => { S.routeType = v; scheduleBuild(); });
+rng('routeW', v => v.toFixed(1) + ' mm', v => { S.routeW = v; scheduleBuild(); });
+rng('routeH', v => v.toFixed(1) + ' mm', v => { S.routeH = v; scheduleBuild(); });
+$('kit').onchange = e => { S.kit = e.target.checked; scheduleBuild(); };
+$('plinth').onchange = e => { S.plinth = e.target.checked; scheduleBuild(); };
+rng('plM', v => v + ' mm', v => { S.plM = v; scheduleBuild(); });
+rng('plH', v => v + ' mm', v => { S.plH = v; scheduleBuild(); });
+$('label').oninput = e => { S.label = e.target.value; scheduleBuild(); };
+rng('explode', v => v + ' mm', v => { S.explode = v; applyExplode(); });
+$('toStep4').onclick = () => goStep(4);
+$('toStep5').onclick = () => goStep(5);
+
+/* ---------- Export ---------- */
+const ATTR = 'Domborzati adat: AWS Terrain Tiles (Mapzen; SRTM és más források). Útvonal: a felhasználó saját GPX-fájlja. Előnézeti térkép: © OpenStreetMap közreműködők.';
+function slug(s) { return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase(); }
+function baseName() { return slug(S.label || (S.track && S.track.name)) || 'gpx-domborzat'; }
+function download(blob, name) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+function stl(mesh) {
+  const I = mesh.idx, P = mesh.pos, n = I.length / 3, buf = new ArrayBuffer(84 + n * 50), dv = new DataView(buf);
+  dv.setUint32(80, n, true); let o = 84;
+  for (let t = 0; t < n; t++) {
+    const a = I[t * 3] * 3, b = I[t * 3 + 1] * 3, c = I[t * 3 + 2] * 3;
+    const ux = P[b] - P[a], uy = P[b + 1] - P[a + 1], uz = P[b + 2] - P[a + 2], vx = P[c] - P[a], vy = P[c + 1] - P[a + 1], vz = P[c + 2] - P[a + 2];
+    let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; const l = Math.hypot(nx, ny, nz) || 1;
+    for (const f of [nx / l, ny / l, nz / l]) { dv.setFloat32(o, f, true); o += 4; }
+    for (const q of [a, b, c]) for (let j = 0; j < 3; j++) { dv.setFloat32(o, P[q + j], true); o += 4; }
+    o += 2;
+  }
+  return buf;
+}
+function partColor(p) { return p.key === 'terrain' ? S.colors.terrain[0] : S.colors[p.key]; }
+function readme(vis) {
+  const L = ['GPX-domborzat – nyomtatható modell (prototípus)', '', `Szélesség: ${S.size} mm · Forma: ${{ square: 'négyzet', circle: 'kör', hex: 'hatszög' }[S.shape]}`, '', 'Alkatrészek és színek:'];
+  vis.forEach((p, i) => L.push(`  ${i + 1}. ${p.name} – ${partColor(p)}`));
+  if (S.bands > 1) { L.push('', 'Domborzat rétegcsere egyszínű nyomtatónál (a tálcától mérve):'); bandHeights().forEach((z, i) => L.push(`  ${z.toFixed(1)} mm-nél → ${S.colors.terrain[i + 1]}`)); }
+  if (S.kit) L.push('', 'Készlet mód: az útvonal külön betét, 0,2 mm oldalhézaggal ül a terep vájatában.');
+  L.push('', 'Forrás: ' + ATTR);
+  return L.join('\n');
+}
+async function export3MF(vis) {
+  const x = ['<?xml version="1.0" encoding="UTF-8"?>',
+    '<model unit="millimeter" xml:lang="hu-HU" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">',
+    `<metadata name="Title">${esc(S.label || 'GPX domborzat')}</metadata>`,
+    `<metadata name="Description">${esc(ATTR)}</metadata>`,
+    '<resources>', '<basematerials id="1">'];
+  vis.forEach(p => x.push(`<base name="${esc(p.name)}" displaycolor="${partColor(p).toUpperCase()}FF"/>`));
+  x.push('</basematerials>');
+  vis.forEach((p, i) => {
+    x.push(`<object id="${i + 2}" type="model" name="${esc(p.name)}" pid="1" pindex="${i}"><mesh><vertices>`);
+    const P = p.mesh.pos, I = p.mesh.idx;
+    for (let k = 0; k < P.length; k += 3) x.push(`<vertex x="${P[k].toFixed(3)}" y="${P[k + 1].toFixed(3)}" z="${P[k + 2].toFixed(3)}"/>`);
+    x.push('</vertices><triangles>');
+    for (let k = 0; k < I.length; k += 3) x.push(`<triangle v1="${I[k]}" v2="${I[k + 1]}" v3="${I[k + 2]}"/>`);
+    x.push('</triangles></mesh></object>');
+  });
+  const gid = vis.length + 2;
+  x.push(`<object id="${gid}" type="model" name="${esc(S.label || 'GPX domborzat')}"><components>`);
+  vis.forEach((p, i) => x.push(`<component objectid="${i + 2}"/>`));
+  x.push('</components></object>', '</resources>', `<build><item objectid="${gid}"/></build>`, '</model>');
+  const zip = new JSZip();
+  zip.file('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>');
+  zip.file('_rels/.rels', '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>');
+  zip.file('3D/3dmodel.model', x.join('\n'));
+  download(await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', mimeType: 'model/3mf' }), baseName() + '.3mf');
+}
+async function exportKit(vis) {
+  const zip = new JSZip();
+  vis.forEach((p, i) => zip.file(`${i + 1}-${slug(p.name)}.stl`, stl(p.mesh)));
+  zip.file('OLVASS_EL.txt', readme(vis));
+  download(await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' }), baseName() + '-keszlet.zip');
+}
+seg('fmtSeg', v => {
+  S.fmt = v;
+  $('fmtHint').textContent = v === '3mf'
+    ? 'Egy fájl, az alkatrészek külön részként; a slicerben mindegyik saját filamentet kaphat.'
+    : 'Színenként külön STL, külön tálcán nyomtatható; a ZIP-ben leírás a színekről és a rétegcseréről.';
+});
+$('dlBtn').onclick = async () => {
+  const vis = S.parts.filter(p => S.visible[p.key] !== false);
+  if (!vis.length) { status('Nincs látható alkatrész a letöltéshez.', true); return; }
+  try { status('Fájl készítése…', false, 0); if (S.fmt === '3mf') await export3MF(vis); else await exportKit(vis); status('Letöltés elindult.'); }
+  catch (e) { console.error(e); status('Nem sikerült a fájl elkészítése.', true, 6000); }
+};
+</script>
+</body>
+</html>
