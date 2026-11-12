@@ -60,7 +60,7 @@ legend{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.0
 .hint:empty{display:none}
 .parts .part{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
 .part small{display:block;color:var(--muted);font-size:12px}
-.swatches{display:flex;gap:4px}
+.swatches{display:flex;gap:4px;flex-wrap:wrap;max-width:122px}
 input[type=color]{width:26px;height:26px;border:1px solid var(--line);border-radius:6px;padding:0;background:none;cursor:pointer}
 .card{border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:12px}
 .card h3{margin:0 0 2px;font-size:15px}
@@ -135,7 +135,13 @@ footer{font-size:11px;color:var(--muted);padding:6px 20px;border-top:1px solid v
       <label class="field">Vastagság a terep alatt</label>
       <div class="row"><input type="range" id="baseT" min="1" max="8" step="0.5" value="2"><span class="val" id="baseTV">2 mm</span></div>
       <label class="field">Terep színsávjai</label>
-      <div class="seg" id="bandSeg"><button data-v="1">1</button><button data-v="2">2</button><button data-v="3" class="on">3</button><button data-v="4">4</button></div>
+      <div class="row"><input type="range" id="bands" min="1" max="8" value="3"><span class="val" id="bandsV">3 szín</span></div>
+      <p class="hint">A terep színsávjai rétegcserével (AMS-nél magasságtartománnyal) nyomtathatók. A talp, a víz, az útvonal és a felirat külön alkatrész, így ezek külön tálcán is mehetnek.</p>
+    </fieldset>
+    <fieldset><legend>Víz</legend>
+      <label class="check"><input type="checkbox" id="water" checked> Tavak, víztározók, nagy folyók felülete</label>
+      <label class="check"><input type="checkbox" id="rivers" checked> Folyók és csatornák vonalként</label>
+      <p class="hint">Forrás: OpenStreetMap. A túl kicsi vízfelületek kimaradnak, mert ebben a méretben nem nyomtathatók.</p>
     </fieldset>
     <fieldset><legend>Útvonal</legend>
       <label class="field">Típus</label>
@@ -201,7 +207,7 @@ footer{font-size:11px;color:var(--muted);padding:6px 20px;border-top:1px solid v
 </section>
 </div>
 
-<footer>Domborzat: AWS Terrain Tiles (Mapzen; SRTM és más források) · Térkép: © OpenStreetMap közreműködők, © OpenTopoMap (CC-BY-SA) · Prototípus, nem végleges termék.</footer>
+<footer>Domborzat: AWS Terrain Tiles (Mapzen; SRTM és más források) · Térkép és víz: © OpenStreetMap közreműködők (ODbL), © OpenTopoMap (CC-BY-SA) · Prototípus, nem végleges termék.</footer>
 
 <script type="module">
 import * as THREE from 'three';
@@ -217,10 +223,24 @@ const S = {
   size: 150, qual: 'normal', exagAuto: true, exag: 2, smooth: 1, baseT: 2, bands: 3,
   routeType: 'ridge', routeW: 2, routeH: 1.2, kit: false,
   plinth: true, plM: 12, plH: 5, label: '',
+  water: true, rivers: true, waterData: null, waterKey: null,
   explode: 0, fmt: '3mf', zRange: [0, 1], parts: [],
-  colors: { plinth: '#2b2b2b', terrain: ['#6f8f5e', '#b49a6a', '#f2efe8', '#d9d4ca'], route: '#e4572e', text: '#f2efe8' },
-  visible: { plinth: true, terrain: true, route: true, text: true },
+  colors: { plinth: '#2b2b2b', terrain: [], water: '#3f7fbf', route: '#e4572e', text: '#f2efe8' },
+  visible: { plinth: true, terrain: true, water: true, route: true, text: true },
 };
+// Hypsometric ramp: low green → olive → tan → brown → grey → snow.
+const RAMP = ['#557a45', '#8fa35f', '#c8b27a', '#a9845a', '#8a7a6e', '#f2efe8'];
+function rampColors(n) {
+  const h = s => [1, 3, 5].map(i => parseInt(s.slice(i, i + 2), 16));
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const t = n === 1 ? 0 : i / (n - 1) * (RAMP.length - 1), k = Math.min(RAMP.length - 2, Math.floor(t)), f = t - k;
+    const a = h(RAMP[k]), b = h(RAMP[k + 1]);
+    out.push('#' + a.map((v, j) => Math.round(v + (b[j] - v) * f).toString(16).padStart(2, '0')).join(''));
+  }
+  return out;
+}
+S.colors.terrain = rampColors(S.bands);
 
 /* ---------- UI helpers ---------- */
 let stT;
@@ -302,10 +322,11 @@ function radialSolid(Nr, Ns, U, V, Z, zBot) {
   return { pos, idx: new Uint32Array(idx) };
 }
 
-// Route ribbon: a closed box section following each polyline. hUV gives the terrain surface height.
+// Ribbon: a closed box section following each polyline. hUV gives the terrain surface height.
+// o.w = width, o.top = height above the highest terrain point under it, o.embed = depth below the lowest.
 const GROOVE = 1.2;
-function routeMesh(polys, hUV, zMin) {
-  const w = S.kit ? S.routeW - 0.4 : S.routeW;
+function routeMesh(polys, hUV, zMin, o) {
+  const w = o.w;
   const pos = [], idx = [];
   for (const P of polys) {
     const n = P.length, base = pos.length / 3;
@@ -316,8 +337,8 @@ function routeMesh(polys, hUV, zMin) {
       const lu = P[k][0] + nx * hw, lv = P[k][1] + ny * hw, ru = P[k][0] - nx * hw, rv = P[k][1] - ny * hw;
       const hl = hUV(lu, lv), hc = hUV(P[k][0], P[k][1]), hr = hUV(ru, rv);
       const hi = Math.max(hl, hc, hr), lo = Math.min(hl, hc, hr);
-      const top = S.routeType === 'ridge' ? hi + S.routeH : hi + 0.6;
-      const bot = Math.max(zMin + 0.4, lo - (S.kit ? GROOVE : 1.0));
+      const top = hi + o.top;
+      const bot = Math.max(zMin + 0.4, lo - o.embed);
       pos.push(lu, lv, top, ru, rv, top, lu, lv, bot, ru, rv, bot);
     }
     for (let k = 0; k < n - 1; k++) {
@@ -357,6 +378,58 @@ function voxelMesh(bits, cols, rows, p, u0, vT, z0, z1) {
     if (!on(x, y + 1)) idx.push(db, cb, ct, db, ct, dt);
   }
   return { pos: new Float32Array(pos), idx: new Uint32Array(idx) };
+}
+
+// Flat-topped prism from a polygon with holes. Outer ring CCW, holes CW, no repeated end point.
+// tris: triangle indices into outer.concat(...holes). Appends into pos/idx.
+function prism(outer, holes, tris, zT, zB, pos, idx) {
+  const rings = [outer, ...holes], all = rings.flat(), n = all.length, base = pos.length / 3;
+  for (const p of all) pos.push(p[0], p[1], zT);
+  for (const p of all) pos.push(p[0], p[1], zB);
+  for (const [a, b, c] of tris) {
+    const A = all[a], B = all[b], C = all[c];
+    const s = (B[0] - A[0]) * (C[1] - A[1]) - (B[1] - A[1]) * (C[0] - A[0]);
+    if (s >= 0) idx.push(base + a, base + b, base + c, base + n + a, base + n + c, base + n + b);
+    else idx.push(base + a, base + c, base + b, base + n + a, base + n + b, base + n + c);
+  }
+  let off = 0;
+  for (const r of rings) {
+    for (let i = 0; i < r.length; i++) {
+      const a = off + i, b = off + (i + 1) % r.length;
+      idx.push(base + n + a, base + n + b, base + b, base + n + a, base + b, base + a);
+    }
+    off += r.length;
+  }
+}
+function signedArea(r) { let s = 0; for (let i = 0; i < r.length; i++) { const a = r[i], b = r[(i + 1) % r.length]; s += a[0] * b[1] - b[0] * a[1]; } return s / 2; }
+// Sutherland–Hodgman clip of polygon P by convex CCW polygon C.
+function clipPoly(P, C) {
+  let out = P;
+  for (let i = 0; i < C.length && out.length; i++) {
+    const a = C[i], b = C[(i + 1) % C.length], inp = out; out = [];
+    const side = p => (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]);
+    const cut = (p, q) => { const sp = side(p), sq = side(q), t = sp / (sp - sq); return [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]; };
+    for (let j = 0; j < inp.length; j++) {
+      const cur = inp[j], prev = inp[(j + inp.length - 1) % inp.length], ci = side(cur) >= 0, pi = side(prev) >= 0;
+      if (ci) { if (!pi) out.push(cut(prev, cur)); out.push(cur); }
+      else if (pi) out.push(cut(prev, cur));
+    }
+  }
+  return out;
+}
+function cleanRing(r) {
+  const out = [];
+  for (const p of r) { const q = out[out.length - 1]; if (!q || Math.hypot(p[0] - q[0], p[1] - q[1]) > 0.05) out.push(p); }
+  while (out.length > 2 && Math.hypot(out[0][0] - out[out.length - 1][0], out[0][1] - out[out.length - 1][1]) <= 0.05) out.pop();
+  return out;
+}
+function pointInRing(x, y, r) {
+  let ins = false;
+  for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+    const a = r[i], b = r[j];
+    if ((a[1] > y) !== (b[1] > y) && x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0]) ins = !ins;
+  }
+  return ins;
 }
 
 function volume(m) {
@@ -555,10 +628,123 @@ function elevAtLL(lat, lon, arr) {
   return (arr[i] * (1 - fx) + arr[i + 1] * fx) * (1 - fy) + (arr[i + d.w] * (1 - fx) + arr[i + d.w + 1] * fx) * fy;
 }
 
+/* ---------- Water from OpenStreetMap (Overpass) ---------- */
+const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+function extentBBox() {
+  let la0 = 90, la1 = -90, lo0 = 180, lo1 = -180;
+  for (const [a, b] of outlineLatLng()) { la0 = Math.min(la0, a); la1 = Math.max(la1, a); lo0 = Math.min(lo0, b); lo1 = Math.max(lo1, b); }
+  return [la0, lo0, la1, lo1];
+}
+const sameLL = (a, b) => Math.abs(a[0] - b[0]) < 1e-9 && Math.abs(a[1] - b[1]) < 1e-9;
+function joinRings(segs) {
+  const pool = segs.filter(s => s.length > 1).map(s => s.slice()), rings = [];
+  while (pool.length) {
+    let ring = pool.shift(), guard = 0;
+    while (!sameLL(ring[0], ring[ring.length - 1]) && guard++ < 5000) {
+      const end = ring[ring.length - 1];
+      const i = pool.findIndex(s => sameLL(s[0], end) || sameLL(s[s.length - 1], end));
+      if (i < 0) break;
+      let s = pool.splice(i, 1)[0]; if (!sameLL(s[0], end)) s = s.reverse();
+      ring = ring.concat(s.slice(1));
+    }
+    if (ring.length >= 4 && sameLL(ring[0], ring[ring.length - 1])) rings.push(ring);
+  }
+  return rings;
+}
+async function loadWater() {
+  if (!S.water && !S.rivers) return;
+  if (S.waterData && S.waterKey === S.demKey) return;
+  const [s, w, n, e] = extentBBox(), bb = `${s},${w},${n},${e}`;
+  const q = `[out:json][timeout:25];(way["natural"="water"](${bb});relation["natural"="water"](${bb});way["waterway"="riverbank"](${bb});relation["waterway"="riverbank"](${bb});way["landuse"="reservoir"](${bb});way["waterway"~"^(river|canal)$"](${bb}););out geom;`;
+  status('Vízfelületek letöltése az OpenStreetMapből…', false, 0);
+  let data = null;
+  for (const url of OVERPASS) {
+    try {
+      const r = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+      if (r.ok) { data = await r.json(); break; }
+    } catch (_) { /* try the next mirror */ }
+  }
+  const polys = [], lines = [];
+  if (!data) { status('A vízadatok most nem érhetők el, a modell víz nélkül készül.', true, 5000); }
+  else for (const el of data.elements || []) {
+    const t = el.tags || {};
+    const isLine = t.waterway === 'river' || t.waterway === 'canal';
+    if (el.type === 'way' && el.geometry) {
+      const g = el.geometry.map(p => [p.lat, p.lon]);
+      if (isLine) lines.push(g);
+      else if (g.length >= 4 && sameLL(g[0], g[g.length - 1])) polys.push({ outer: g, holes: [] });
+    } else if (el.type === 'relation' && el.members) {
+      const outs = joinRings(el.members.filter(m => m.role !== 'inner' && m.geometry).map(m => m.geometry.map(p => [p.lat, p.lon])));
+      const ins = joinRings(el.members.filter(m => m.role === 'inner' && m.geometry).map(m => m.geometry.map(p => [p.lat, p.lon])));
+      for (const o of outs) polys.push({ outer: o, holes: ins.filter(h => pointInRing(h[0][1], h[0][0], o.map(p => [p[1], p[0]]))) });
+    }
+  }
+  S.waterData = { polys, lines }; S.waterKey = S.demKey;
+}
+// Builds the water part and flattens the terrain under it. Returns a mesh or null.
+function buildWater(sc, rT, hUV, Z, U, V, z0, polysOut) {
+  if (!S.waterData) return null;
+  const C = []; for (let i = 0; i < 180; i++) { const th = i / 180 * 2 * Math.PI, r = rT(th) - 0.8; C.push([r * Math.cos(th), r * Math.sin(th)]); }
+  const pos = [], idx = [];
+  if (S.water) for (const wp of S.waterData.polys) {
+    let outer = cleanRing(clipPoly(cleanRing(wp.outer.map(p => llToMM(p[0], p[1], sc))), C));
+    if (outer.length < 3) continue;
+    if (signedArea(outer) < 0) outer.reverse();
+    if (signedArea(outer) < 2.5) continue;
+    const holes = [];
+    for (const h of wp.holes) {
+      let r = cleanRing(clipPoly(cleanRing(h.map(p => llToMM(p[0], p[1], sc))), C));
+      if (r.length < 3 || Math.abs(signedArea(r)) < 1) continue;
+      if (signedArea(r) > 0) r.reverse();
+      holes.push(r);
+    }
+    const tris = THREE.ShapeUtils.triangulateShape(outer.map(p => new THREE.Vector2(p[0], p[1])), holes.map(h => h.map(p => new THREE.Vector2(p[0], p[1]))));
+    if (!tris.length) continue;
+    let wl = Infinity; for (const p of outer) wl = Math.min(wl, hUV(p[0], p[1]));
+    const floor = S.kit ? wl - 1.0 : wl - 0.2;
+    // Flatten terrain inside the water body so the surface sits cleanly on top.
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const p of outer) { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); }
+    for (let i = 0; i < Z.length; i++) {
+      const u = U[i], v = V[i];
+      if (u < x0 || u > x1 || v < y0 || v > y1) continue;
+      if (pointInRing(u, v, outer) && !holes.some(h => pointInRing(u, v, h))) Z[i] = Math.max(z0 + 0.6, floor);
+    }
+    prism(outer, holes, tris, wl + 0.3, Math.max(z0 + 0.4, S.kit ? wl - 1.0 : wl - 0.6), pos, idx);
+    polysOut.push(outer);
+  }
+  let ribbons = { pos: new Float32Array(0), idx: new Uint32Array(0) };
+  if (S.rivers && S.waterData.lines.length) {
+    const lp = [];
+    for (const l of S.waterData.lines) lp.push(...toPolys(l.map(p => llToMM(p[0], p[1], sc)), rT, 1.5, 0.6, 1));
+    // Skip river centrelines that run inside a water surface already drawn.
+    const keep = [];
+    for (const P of lp) {
+      let cur = [];
+      for (const p of P) {
+        if (polysOut.some(o => pointInRing(p[0], p[1], o))) { if (cur.length > 3) keep.push(cur); cur = []; }
+        else cur.push(p);
+      }
+      if (cur.length > 3) keep.push(cur);
+    }
+    ribbons = routeMesh(keep, hUV, z0, { w: 1.0, top: 0.4, embed: 0.8 });
+  }
+  if (!idx.length && !ribbons.idx.length) return null;
+  const base = pos.length / 3;
+  const allPos = new Float32Array(pos.length + ribbons.pos.length); allPos.set(pos); allPos.set(ribbons.pos, pos.length);
+  const allIdx = new Uint32Array(idx.length + ribbons.idx.length); allIdx.set(idx); for (let i = 0; i < ribbons.idx.length; i++) allIdx[idx.length + i] = ribbons.idx[i] + base;
+  return { pos: allPos, idx: allIdx };
+}
+
 /* ---------- Model ---------- */
+function llToMM(lat, lon, sc) { const en = toEN(lat, lon), uv = enToUV(en[0], en[1]); return [uv[0] * sc, uv[1] * sc]; }
 function routePolys(sc, rT) {
-  const mm = S.trimmed.map(p => { const en = toEN(p.lat, p.lon), uv = enToUV(en[0], en[1]); return [uv[0] * sc, uv[1] * sc]; });
-  const step = 0.5, rs = [mm[0]]; let since = 0;
+  return toPolys(S.trimmed.map(p => llToMM(p.lat, p.lon, sc)), rT, S.routeW / 2 + 1, 0.5, 2);
+}
+// Resamples a polyline (mm), smooths it, and splits it into runs that stay inside the shape.
+function toPolys(mm, rT, lim, step, passes) {
+  if (mm.length < 2) return [];
+  const rs = [mm[0]]; let since = 0;
   for (let i = 1; i < mm.length; i++) {
     const a = mm[i - 1], b = mm[i], d = Math.hypot(b[0] - a[0], b[1] - a[1]);
     if (d < 1e-9) continue;
@@ -567,11 +753,11 @@ function routePolys(sc, rT) {
     since = d - (t - step);
   }
   let P = rs;
-  for (let pass = 0; pass < 2; pass++) {
+  for (let pass = 0; pass < passes; pass++) {
     const Q = P;
     P = Q.map((p, i) => { let su = 0, sv = 0, c = 0; for (let o = -2; o <= 2; o++) { const q = Q[i + o]; if (q) { su += q[0]; sv += q[1]; c++; } } return [su / c, sv / c]; });
   }
-  const lim = S.routeW / 2 + 1, polys = []; let cur = [];
+  const polys = []; let cur = [];
   for (const p of P) {
     if (Math.hypot(p[0], p[1]) < rT(Math.atan2(p[1], p[0])) - lim) cur.push(p);
     else { if (cur.length > 3) polys.push(cur); cur = []; }
@@ -649,6 +835,7 @@ function buildModel() {
   const hUV = (u, v) => zb + (elevUV(u, v) - mn) * k;
   const Z = new Float32Array(n);
   for (let i = 0; i < n; i++) Z[i] = zb + (E[i] - mn) * k;
+  const waterMesh = buildWater(sc, rT, hUV, Z, U, V, z0, []);
   const polys = routePolys(sc, rT);
   if (S.kit && polys.length) carve(Z, U, V, polys);
   S.zRange = [zb, zb + Math.max(0.5, (mx - mn) * k)];
@@ -659,7 +846,9 @@ function buildModel() {
     parts.push({ key: 'plinth', name: 'Talp', mesh: radialSolid(1, Np, pu, pv, pz, 0) });
   }
   parts.push({ key: 'terrain', name: 'Domborzat', mesh: radialSolid(Nr, Ns, U, V, Z, z0) });
-  if (polys.length) parts.push({ key: 'route', name: 'Útvonal', mesh: routeMesh(polys, hUV, z0) });
+  if (waterMesh) parts.push({ key: 'water', name: 'Víz', mesh: waterMesh });
+  if (polys.length) parts.push({ key: 'route', name: 'Útvonal', mesh: routeMesh(polys, hUV, z0, {
+    w: S.kit ? S.routeW - 0.4 : S.routeW, top: S.routeType === 'ridge' ? S.routeH : 0.6, embed: S.kit ? GROOVE : 1.0 }) });
   const tm = textMesh(rT, rP); if (tm) parts.push({ key: 'text', name: 'Felirat', mesh: tm });
   return parts;
 }
@@ -713,7 +902,7 @@ function showParts() {
 }
 function applyExplode() {
   const e = S.explode;
-  for (const o of group.children) { const k = o.userData.key; o.position.z = k === 'terrain' ? e : k === 'route' ? 2 * e : k === 'text' ? 0.5 * e : 0; }
+  for (const o of group.children) { const k = o.userData.key; o.position.z = k === 'terrain' ? e : k === 'water' ? 1.5 * e : k === 'route' ? 2 * e : k === 'text' ? 0.5 * e : 0; }
 }
 function applyVisibility() { for (const o of group.children) o.visible = S.visible[o.userData.key] !== false; }
 function fitCam() { camera.position.set(0, -S.size * 1.35, S.size * 1.05); controls.target.set(0, 0, (S.plinth ? S.plH : 0) + 8); controls.update(); }
@@ -761,6 +950,7 @@ async function doBuild(fit) {
   building = true; $('genBtn').disabled = true;
   try {
     await loadDEM();
+    await loadWater();
     status('Modell számítása…', false, 0);
     await new Promise(r => setTimeout(r, 30));
     const t0 = performance.now();
@@ -780,7 +970,9 @@ rng('exag', v => v.toFixed(1) + '×', v => { S.exag = v; S.exagAuto = false; $('
 $('exagAuto').onchange = e => { S.exagAuto = e.target.checked; scheduleBuild(); };
 rng('smooth', v => String(v), v => { S.smooth = v; scheduleBuild(); });
 rng('baseT', v => v + ' mm', v => { S.baseT = v; scheduleBuild(); });
-seg('bandSeg', v => { S.bands = +v; if (S.parts.length) { showParts(); renderParts(); renderSwaps(); } });
+rng('bands', v => v + ' szín', v => { S.bands = v; S.colors.terrain = rampColors(v); if (S.parts.length) { showParts(); renderParts(); renderSwaps(); } });
+$('water').onchange = e => { S.water = e.target.checked; scheduleBuild(); };
+$('rivers').onchange = e => { S.rivers = e.target.checked; scheduleBuild(); };
 seg('routeTypeSeg', v => { S.routeType = v; scheduleBuild(); });
 rng('routeW', v => v.toFixed(1) + ' mm', v => { S.routeW = v; scheduleBuild(); });
 rng('routeH', v => v.toFixed(1) + ' mm', v => { S.routeH = v; scheduleBuild(); });
@@ -794,7 +986,7 @@ $('toStep4').onclick = () => goStep(4);
 $('toStep5').onclick = () => goStep(5);
 
 /* ---------- Export ---------- */
-const ATTR = 'Domborzati adat: AWS Terrain Tiles (Mapzen; SRTM és más források). Útvonal: a felhasználó saját GPX-fájlja. Előnézeti térkép: © OpenStreetMap közreműködők.';
+const ATTR = 'Domborzati adat: AWS Terrain Tiles (Mapzen; SRTM és más források). Vízfelületek: © OpenStreetMap közreműködők, ODbL licenc (openstreetmap.org/copyright). Útvonal: a felhasználó saját GPX-fájlja.';
 function slug(s) { return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase(); }
 function baseName() { return slug(S.label || (S.track && S.track.name)) || 'gpx-domborzat'; }
 function download(blob, name) {
